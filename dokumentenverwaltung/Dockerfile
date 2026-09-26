@@ -1,4 +1,5 @@
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-debian:bookworm
+# Multi-Arch-Basis (amd64 und arm64) – Home Assistant wählt die passende Architektur
+ARG BUILD_FROM=ghcr.io/home-assistant/base-debian:trixie
 FROM ${BUILD_FROM}
 
 # Texterkennung: Tesseract mit deutschem und englischem Sprachpaket (Open Source, offline)

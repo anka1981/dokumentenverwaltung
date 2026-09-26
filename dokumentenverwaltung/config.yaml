@@ -1,5 +1,5 @@
 name: Dokumentenverwaltung
-version: "1.0.0"
+version: "1.0.1"
 slug: dokumentenverwaltung
 description: >-
   Dokumente per Datei oder Handy-Scan einspielen, Text kostenlos erkennen (Tesseract),
@@ -13,6 +13,8 @@ ingress: true
 ingress_stream: true
 panel_icon: mdi:file-document-multiple-outline
 panel_title: Dokumente
+# Während eines Backups kurz anhalten: SQLite wird so konsistent gesichert
+backup: cold
 map:
   - share:rw
 options:

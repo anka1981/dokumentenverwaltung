@@ -45,9 +45,31 @@ Auf dem Raspberry Pi, nirgendwo sonst:
 
 Diese Dateien liegen in `/data` (Standard) oder in `/share/dokumentenverwaltung`.
 
-## Backup
+## Backup in die Google Cloud (Google Drive)
 
-Die Backups von Home Assistant (Einstellungen → System → Backups) enthalten die Daten des
-Add-ons automatisch, bei `ablage_im_share: true` den Ordner `share`. Speichere die Backups
-unbedingt auch **außerhalb** des Raspberry Pi, z. B. mit dem Google-Drive-Backup-Add-on
-oder auf einem Netzlaufwerk. Die SD-Karte ist sonst der einzige Speicherort deiner Dokumente.
+Home Assistant kann Backups selbst verschlüsselt auf Google Drive ablegen. Die Daten dieses
+Add-ons sind darin enthalten: Datenbank, alle Dokumente und die gelernten Vorschläge.
+
+Einrichtung (einmalig):
+
+1. **Einstellungen → Geräte & Dienste → Integration hinzufügen → „Google Drive“**, dann mit
+   deinem Google-Konto anmelden und den Zugriff erlauben.
+2. **Einstellungen → System → Backups → Backups konfigurieren**:
+   - **Automatisches Backup:** z. B. täglich
+   - **Speicherorte:** **Google Drive** anhaken (den lokalen Speicher zusätzlich behalten
+     ist sinnvoll)
+   - **Inhalt:** das App/Add-on **Dokumentenverwaltung** auswählen. Bei
+     `ablage_im_share: true` zusätzlich den Ordner **Share**.
+   - **Aufbewahrung:** z. B. die letzten 7 Backups
+3. Den **Verschlüsselungsschlüssel** der Backups herunterladen und sicher aufbewahren,
+   z. B. im Passwortmanager. Ohne ihn lässt sich ein Backup nicht wiederherstellen.
+
+Home Assistant verschlüsselt die Backups, bevor sie das Gerät verlassen. Google sieht deine
+Dokumente also nicht im Klartext. Speicherplatz: Das kostenlose Google-Konto hat 15 GB.
+Gescannte Seiten brauchen etwa 0,3–1 MB.
+
+Während des Backups ist das Add-on für einige Sekunden bis Minuten gestoppt, damit die
+Datenbank konsistent gesichert wird.
+
+**Wiederherstellen:** Einstellungen → System → Backups → Backup aus Google Drive wählen →
+nur das Add-on „Dokumentenverwaltung“ (und ggf. Share) wiederherstellen.

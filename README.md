@@ -18,7 +18,7 @@ Home-Assistant-Add-on zur Verwaltung privater Unterlagen:
 4. **Starten** und **In Seitenleiste anzeigen** aktivieren
 
 Voraussetzung: Home Assistant OS oder Supervised auf einem 64-Bit-System (Raspberry Pi 4/5
-mit 64-Bit-Image, oder x86). Details zu Optionen, Speicherort und Backup: [DOCS.md](dokumentenverwaltung/DOCS.md).
+mit 64-Bit-Image, oder x86). Details zu Optionen, Speicherort und Backup nach Google Drive: [DOCS.md](dokumentenverwaltung/DOCS.md).
 
 ## Ohne Home Assistant
 
