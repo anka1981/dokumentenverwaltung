@@ -5,6 +5,7 @@
 """
 
 import argparse
+import logging
 import os
 
 from dms import create_app, gdrive
@@ -16,6 +17,7 @@ def main():
     p.add_argument("--port", type=int, default=8080)
     p.add_argument("--data", default=os.environ.get("DMS_DATA", "data"), help="Ablage- und Datenbankverzeichnis")
     args = p.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     app = create_app(args.data)
     data_dir = app.config["DATA_DIR"]
@@ -29,7 +31,7 @@ def main():
         app.run(host=args.host, port=args.port, threaded=True)
     else:
         print(f"Dokumentenverwaltung läuft auf http://{args.host}:{args.port}")
-        serve(app, host=args.host, port=args.port, max_request_body_size=200 * 1024 * 1024)
+        serve(app, host=args.host, port=args.port, threads=8, max_request_body_size=200 * 1024 * 1024)
 
 
 if __name__ == "__main__":

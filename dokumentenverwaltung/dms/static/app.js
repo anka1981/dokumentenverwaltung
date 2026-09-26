@@ -10,13 +10,37 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// Diagnose ins Add-on-Protokoll (Einstellungen → Add-ons → Dokumentenverwaltung → Protokoll)
+function clientLog(msg) {
+  try {
+    const body = JSON.stringify({ msg: String(msg) });
+    if (!(navigator.sendBeacon && navigator.sendBeacon("api/clientlog", new Blob([body], { type: "application/json" })))) {
+      fetch("api/clientlog", { method: "POST", body, headers: { "Content-Type": "application/json" } }).catch(() => {});
+    }
+  } catch { /* Diagnose darf nie stören */ }
+}
+window.addEventListener("error", e => clientLog(`JS-Fehler: ${e.message} (${e.filename}:${e.lineno})`));
+window.addEventListener("unhandledrejection", e => clientLog(`JS-Fehler (async): ${e.reason?.message || e.reason}`));
+
 async function api(path, opts = {}) {
-  const init = { ...opts, headers: { ...(opts.headers || {}) } };
+  const { timeout = 30000, ...rest } = opts;
+  const init = { ...rest, headers: { ...(opts.headers || {}) } };
   if (opts.json !== undefined) {
     init.body = JSON.stringify(opts.json);
     init.headers["Content-Type"] = "application/json";
   }
-  const res = await fetch("api" + path, init);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeout);
+  let res;
+  try {
+    res = await fetch("api" + path, { ...init, signal: ctrl.signal });
+  } catch (e) {
+    const msg = e.name === "AbortError" ? `Keine Antwort vom Server (${path})` : `Verbindung fehlgeschlagen (${path})`;
+    clientLog(msg);
+    throw new Error(msg);
+  } finally {
+    clearTimeout(timer);
+  }
   if (res.status === 204) return null;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -94,9 +118,11 @@ async function route() {
   $$(".topbar nav a").forEach(a => a.classList.toggle("active", a.dataset.view === name));
   $(".fab-group").hidden = name === "doc" || name === "einstellungen"; // Knöpfe würden Formulare verdecken
   const view = views[name] || viewInbox;
+  main.innerHTML = `<div class="empty"><div class="spinner" style="margin:auto"></div></div>`;
   try {
     await view(arg);
   } catch (e) {
+    clientLog(`Ansicht ${name}: ${e.message}`);
     main.innerHTML = `<div class="card warning">${esc(e.message)}</div>`;
   }
   refreshCount();
@@ -148,15 +174,25 @@ async function viewInbox() {
 }
 
 async function runDriveImport() {
-  busy("Google Drive wird abgerufen und Text erkannt…");
   try {
-    const r = await api("/drive/run", { method: "POST" });
-    const parts = [`${r.imported} neu`];
-    if (r.duplicates) parts.push(`${r.duplicates} schon vorhanden`);
-    toast(`Google Drive: ${parts.join(", ")}` + (r.errors.length ? ` – ${r.errors[0]}` : ""), r.errors.length > 0);
-    route();
+    const before = await api("/drive/run", { method: "POST" });
+    toast(before.started ? "Abruf aus Google Drive läuft im Hintergrund…" : "Ein Abruf läuft bereits…");
+    const lastRun = before.last_run;
+    // Auf das Ende warten (Texterkennung auf dem Raspberry Pi kann Minuten dauern)
+    for (let i = 0; i < 180; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      const st = await api("/drive");
+      if (!st.running && st.last_run !== lastRun) {
+        const r = st.last_result;
+        const parts = [`${r.imported} neu`];
+        if (r.duplicates) parts.push(`${r.duplicates} schon vorhanden`);
+        toast(`Google Drive: ${parts.join(", ")}` + (r.errors.length ? ` – ${r.errors[0]}` : ""), r.errors.length > 0);
+        const view = (location.hash.slice(1).split("?")[0] || "eingang").split("/")[0];
+        if (view === "eingang" || view === "einstellungen") route();
+        return;
+      }
+    }
   } catch (e) { toast(e.message, true); }
-  finally { busy(false); }
 }
 
 async function viewArchive() {
@@ -691,6 +727,7 @@ function cameraProblem(text) {
 
 async function openCamera() {
   cameraProblem("");
+  clientLog(`Kamera: secure=${window.isSecureContext} mediaDevices=${!!navigator.mediaDevices?.getUserMedia} origin=${location.origin}`);
   if (!window.isSecureContext) {
     cameraProblem(`Die Kamera geht nur über eine verschlüsselte Verbindung (https). Du bist über
       <b>${esc(location.origin)}</b> verbunden. In der Home-Assistant-App unter <b>Einstellungen → Companion-App →
@@ -708,6 +745,7 @@ async function openCamera() {
       video: { facingMode: { ideal: "environment" }, width: { ideal: 4096 }, height: { ideal: 4096 } },
     });
   } catch (e) {
+    clientLog(`Kamera-Fehler: ${e.name}: ${e.message}`);
     const reasons = {
       NotAllowedError: "Der Kamerazugriff wurde verweigert. Bitte in den Android-Einstellungen der App (bzw. des Browsers) unter <b>Berechtigungen → Kamera</b> „Zulassen“ wählen und es erneut versuchen.",
       NotFoundError: "Es wurde keine Kamera gefunden.",
@@ -772,4 +810,7 @@ $("#camera-dialog").addEventListener("cancel", closeCamera);
 
 // ------------------------------------------------------------------ Start
 
+clientLog(`Seite geladen: ${document.querySelector('script[src*="app.js"]')?.getAttribute("src")} ` +
+  `secure=${window.isSecureContext} kamera=${!!navigator.mediaDevices?.getUserMedia} ` +
+  `iframe=${window.top !== window} ua=${navigator.userAgent}`);
 route();

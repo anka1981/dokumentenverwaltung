@@ -1,5 +1,14 @@
 # Änderungen
 
+## 1.1.3
+
+- Abruf aus Google Drive läuft im Hintergrund; die Oberfläche bleibt bedienbar, auch
+  wenn die Texterkennung auf dem Raspberry Pi länger dauert.
+- Anfragen haben ein Zeitlimit mit verständlicher Meldung; beim Seitenwechsel erscheint
+  eine Ladeanzeige statt der alten Seite.
+- Diagnose: Die Seite schreibt Version, Verbindungsart, Kamera-Verfügbarkeit und Fehler
+  ins Add-on-Protokoll.
+
 ## 1.1.2
 
 - Nach einem Update lädt die Home-Assistant-App jetzt sicher die neue Oberfläche

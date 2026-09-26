@@ -342,7 +342,7 @@ def test_drive_connect_and_import(client, monkeypatch):
     assert ok.status_code == 200 and ok.json["connected"]
     assert "geheim" not in str(client.get("/api/drive").json)  # Schlüssel wird nie ausgeliefert
 
-    r = client.post("/api/drive/run").json
+    r = client.post("/api/drive/run?wait=1").json
     assert r["imported"] == 2, r
     assert len(r["errors"]) == 1 and "programm.exe" in r["errors"][0]
     inbox = client.get("/api/documents?status=eingang").json
@@ -353,7 +353,7 @@ def test_drive_connect_and_import(client, monkeypatch):
     assert fake.files["3"]["parents"] == ["inbox"]  # nicht unterstützt: bleibt liegen
 
     # Zweiter Abruf: nichts Neues
-    r = client.post("/api/drive/run").json
+    r = client.post("/api/drive/run?wait=1").json
     assert r["imported"] == 0
     assert client.get("/api/drive").json["last_result"]["imported"] == 0
 
@@ -366,7 +366,7 @@ def test_drive_revoked_access(client, monkeypatch):
     conn = db.connect(client.data_dir / "dms.sqlite")
     gdrive.put(conn, client_id="c", client_secret="s", refresh_token="r")
     conn.close()
-    r = client.post("/api/drive/run").json
+    r = client.post("/api/drive/run?wait=1").json
     assert "neu verbinden" in r["errors"][0]
     assert client.get("/api/drive").json["connected"] is False
 
@@ -389,7 +389,7 @@ def test_drive_import_survives_broken_file(client, monkeypatch):
         return original(self, filename, data, source)
     monkeypatch.setattr(service.Store, "_ingest_one", flaky)
 
-    res = client.post("/api/drive/run")
+    res = client.post("/api/drive/run?wait=1")
     assert res.status_code == 200
     assert res.json["imported"] == 1
     assert "kaputt.pdf: Tesseract abgestürzt" in res.json["errors"]
@@ -415,3 +415,26 @@ def test_index_busts_cache(client):
     assert "immutable" in client.get(f"/static/app.js?v={v}").headers["Cache-Control"]
     assert client.get("/static/app.js").headers["Cache-Control"] == "no-cache"
     assert client.get("/api/status").headers["Cache-Control"] == "no-store"
+
+
+def test_drive_run_in_background(client, monkeypatch):
+    import time
+    fake = FakeGoogle([{"id": "1", "name": "a.pdf", "mimeType": "application/pdf", "data": make_pdf(INVOICE)}])
+    monkeypatch.setattr(gdrive, "http", fake)
+    from dms import db
+    conn = db.connect(client.data_dir / "dms.sqlite")
+    gdrive.put(conn, client_id="c", client_secret="s", refresh_token="r")
+    conn.close()
+    res = client.post("/api/drive/run")
+    assert res.status_code == 202 and res.json["started"]
+    for _ in range(100):
+        st = client.get("/api/drive").json
+        if not st["running"] and st["last_run"]:
+            break
+        time.sleep(0.1)
+    assert st["last_result"]["imported"] == 1
+
+
+def test_clientlog(client, caplog):
+    assert client.post("/api/clientlog", json={"msg": "Kamera: secure=false"}).status_code == 204
+    assert "Kamera: secure=false" in caplog.text

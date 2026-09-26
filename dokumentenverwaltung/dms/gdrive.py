@@ -87,6 +87,7 @@ def status(conn: sqlite3.Connection) -> dict:
         "last_run": setting(conn, "last_run"),
         "last_result": json.loads(last) if last else None,
         "redirect_uri": REDIRECT_URI,
+        "running": is_running(),
     }
 
 
@@ -318,6 +319,32 @@ def run_import(store) -> dict:
             last_result=json.dumps(result, ensure_ascii=False))
         _run_lock.release()
     return result
+
+
+def is_running() -> bool:
+    return _run_lock.locked()
+
+
+def start_import(db_path: Path, data_dir: Path) -> bool:
+    """Startet einen Abruf im Hintergrund. False, wenn schon einer läuft."""
+    from .service import Store
+
+    if is_running():
+        return False
+
+    def work():
+        store = Store(db.connect(db_path), data_dir)
+        try:
+            run_import(store)
+        except DriveError:
+            pass  # läuft parallel schon einer
+        except Exception:
+            log.exception("Google-Drive-Abruf fehlgeschlagen")
+        finally:
+            store.conn.close()
+
+    threading.Thread(target=work, name="drive-import-manual", daemon=True).start()
+    return True
 
 
 def start_scheduler(db_path: Path, data_dir: Path) -> threading.Thread:

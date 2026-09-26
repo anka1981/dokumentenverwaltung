@@ -202,7 +202,19 @@ def create_app(data_dir: str | Path | None = None, password: str | None = None,
 
     @app.post("/api/drive/run")
     def drive_run():
-        return jsonify(gdrive.run_import(store()))
+        if request.args.get("wait") == "1":  # synchron (Tests, Skripte)
+            return jsonify(gdrive.run_import(store()))
+        started = gdrive.start_import(db_path, data_dir)
+        return jsonify({**gdrive.status(store().conn), "started": started}), 202
+
+    # Diagnose: Die Seite meldet Fehler und Umgebung (Version, https, Kamera)
+    # ins Add-on-Protokoll, damit Probleme auf dem Handy sichtbar werden.
+    @app.post("/api/clientlog")
+    def clientlog():
+        data = request.get_json(silent=True, force=True) or {}
+        msg = str(data.get("msg", ""))[:2000].replace("\n", " | ")
+        app.logger.warning("Handy/Browser: %s", msg)
+        return "", 204
 
     # -------------------------------------------------------------- Ordner
 
