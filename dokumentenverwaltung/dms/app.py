@@ -8,7 +8,7 @@ from pathlib import Path
 
 from flask import Flask, Response, g, jsonify, request, send_file, send_from_directory
 
-from . import db
+from . import db, gdrive
 from .service import Conflict, DmsError, Store, Upload
 
 STATIC = Path(__file__).parent / "static"
@@ -64,6 +64,10 @@ def create_app(data_dir: str | Path | None = None, password: str | None = None,
         if isinstance(exc, Conflict) and exc.document_id:
             body["document_id"] = exc.document_id
         return jsonify(body), exc.status
+
+    @app.errorhandler(gdrive.DriveError)
+    def drive_error(exc):
+        return jsonify({"error": str(exc)}), 400
 
     @app.errorhandler(413)
     def too_large(_exc):
@@ -142,6 +146,35 @@ def create_app(data_dir: str | Path | None = None, password: str | None = None,
     @app.get("/api/tags")
     def tags():
         return jsonify(store().all_tags())
+
+    # ------------------------------------------------ Google-Drive-Import
+
+    @app.get("/api/drive")
+    def drive_status():
+        return jsonify(gdrive.status(store().conn))
+
+    @app.put("/api/drive")
+    def drive_configure():
+        d = _json()
+        return jsonify(gdrive.configure(
+            store().conn, d.get("client_id"), d.get("client_secret"),
+            d.get("folder"), d.get("interval"), d.get("enabled")))
+
+    @app.post("/api/drive/auth")
+    def drive_auth():
+        return jsonify({"url": gdrive.auth_url(store().conn)})
+
+    @app.post("/api/drive/connect")
+    def drive_connect():
+        return jsonify(gdrive.finish_auth(store().conn, _json().get("url", "")))
+
+    @app.post("/api/drive/disconnect")
+    def drive_disconnect():
+        return jsonify(gdrive.disconnect(store().conn))
+
+    @app.post("/api/drive/run")
+    def drive_run():
+        return jsonify(gdrive.run_import(store()))
 
     # -------------------------------------------------------------- Ordner
 

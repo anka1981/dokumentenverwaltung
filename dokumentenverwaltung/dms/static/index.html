@@ -18,6 +18,7 @@
       <a href="#eingang" data-view="eingang">Eingang <span id="inbox-count" class="badge" hidden></span></a>
       <a href="#archiv" data-view="archiv">Archiv</a>
       <a href="#ordner" data-view="ordner">Ordner</a>
+      <a href="#einstellungen" data-view="einstellungen" title="Einstellungen" aria-label="Einstellungen">⚙</a>
     </nav>
   </header>
 
@@ -51,6 +52,24 @@
         <button type="button" class="btn primary" id="scan-upload" disabled>Hochladen &amp; erkennen</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- Kamera direkt in der Seite (funktioniert auch in der Home-Assistant-App) -->
+  <dialog id="camera-dialog" class="camera-dialog">
+    <div class="camera">
+      <video id="camera-video" autoplay playsinline muted></video>
+      <div class="camera-frame" aria-hidden="true"></div>
+      <div class="camera-top">
+        <span id="camera-count">0 Seiten</span>
+        <span class="muted">Dokument formatfüllend und gerade aufnehmen</span>
+      </div>
+      <div class="camera-bar">
+        <button type="button" class="btn ghost camera-btn" id="camera-cancel">Abbrechen</button>
+        <button type="button" class="shutter" id="camera-shoot" aria-label="Foto aufnehmen"></button>
+        <button type="button" class="btn primary camera-btn" id="camera-done">Fertig</button>
+      </div>
+      <img id="camera-last" class="camera-last" alt="" hidden>
+    </div>
   </dialog>
 
   <div id="busy" class="busy" hidden>

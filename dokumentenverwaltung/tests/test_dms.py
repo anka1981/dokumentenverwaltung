@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fixtures import DOCTOR, INSURANCE, INVOICE, make_docx, make_odt, make_pdf, make_photo  # noqa: E402
 
-from dms import analyze, create_app, extract  # noqa: E402
+from dms import analyze, create_app, extract, gdrive  # noqa: E402
 
 needs_ocr = pytest.mark.skipif(not extract.ocr_available(), reason="Tesseract nicht installiert")
 
@@ -270,3 +270,98 @@ def test_ui_uses_relative_urls():
         src = (static / name).read_text()
         for bad in ('"/api', "'/api", "`/api", '"/static'):
             assert bad not in src, (name, bad)
+
+
+# ------------------------------------------------------ Google-Drive-Import
+
+class FakeGoogle:
+    """Simuliert OAuth und die Drive-API für gdrive.http."""
+
+    def __init__(self, files):
+        self.files = {f["id"]: dict(f, parents=["inbox"]) for f in files}
+        self.folders = {"inbox": ("Dokumente-Eingang", "root")}
+        self.token_requests = []
+
+    def __call__(self, method, url, *, params=None, form=None, body=None, token=None, headers=None):
+        import json as _json
+        params = params or {}
+        if url == gdrive.TOKEN_URL:
+            self.token_requests.append(form)
+            if form["grant_type"] == "authorization_code":
+                assert form["code"] == "abc" and form["code_verifier"]
+                return _json.dumps({"refresh_token": "r1", "access_token": "a1"}).encode()
+            return _json.dumps({"access_token": "a2"}).encode()
+        assert token == "a2"
+        if method == "GET" and url.endswith("/files") and "name =" in params.get("q", ""):
+            name = params["q"].split("'")[1]
+            parent = params["q"].split("'")[5]
+            hits = [{"id": i} for i, (n, p) in self.folders.items() if n == name and p == parent]
+            return _json.dumps({"files": hits}).encode()
+        if method == "POST" and url.endswith("/files"):
+            fid = "f" + str(len(self.folders))
+            self.folders[fid] = (body["name"], body["parents"][0])
+            return _json.dumps({"id": fid}).encode()
+        if method == "GET" and url.endswith("/files"):
+            folder = params["q"].split("'")[1]
+            hits = [{k: f[k] for k in ("id", "name", "mimeType")} for f in self.files.values() if folder in f["parents"]]
+            return _json.dumps({"files": hits}).encode()
+        fid = url.split("/files/")[1].split("/")[0]
+        if url.endswith("/export"):
+            return self.files[fid]["data"]
+        if method == "GET":
+            return self.files[fid]["data"]
+        if method == "PATCH":
+            f = self.files[fid]
+            f["parents"] = [params["addParents"] if p == params["removeParents"] else p for p in f["parents"]]
+            return b"{}"
+        raise AssertionError((method, url, params))
+
+
+def test_drive_connect_and_import(client, monkeypatch):
+    fake = FakeGoogle([
+        {"id": "1", "name": "Scan Stromrechnung.pdf", "mimeType": "application/pdf", "data": make_pdf(INVOICE)},
+        {"id": "2", "name": "Arztbrief", "mimeType": "application/vnd.google-apps.document", "data": make_pdf(DOCTOR)},
+        {"id": "3", "name": "programm.exe", "mimeType": "application/octet-stream", "data": b"MZ"},
+    ])
+    monkeypatch.setattr(gdrive, "http", fake)
+
+    assert client.post("/api/drive/auth").status_code == 400  # erst Zugangsdaten
+    client.put("/api/drive", json={"client_id": "cid.apps.googleusercontent.com", "client_secret": "geheim"})
+    url = client.post("/api/drive/auth").json["url"]
+    assert "code_challenge=" in url and "access_type=offline" in url
+    from urllib.parse import parse_qs, urlsplit
+    state = parse_qs(urlsplit(url).query)["state"][0]
+
+    bad = client.post("/api/drive/connect", json={"url": "http://127.0.0.1:8765/?state=alt&code=abc"})
+    assert bad.status_code == 400 and "älteren Anmeldung" in bad.json["error"]
+    ok = client.post("/api/drive/connect", json={"url": f"http://127.0.0.1:8765/?state={state}&code=abc&scope=x"})
+    assert ok.status_code == 200 and ok.json["connected"]
+    assert "geheim" not in str(client.get("/api/drive").json)  # Schlüssel wird nie ausgeliefert
+
+    r = client.post("/api/drive/run").json
+    assert r["imported"] == 2, r
+    assert len(r["errors"]) == 1 and "programm.exe" in r["errors"][0]
+    inbox = client.get("/api/documents?status=eingang").json
+    assert sorted(d["source"] for d in inbox) == ["drive", "drive"]
+    assert "Arztbrief.pdf" in [d["original_name"] for d in inbox]
+    done = [i for i, (n, _) in fake.folders.items() if n == "importiert"][0]
+    assert fake.files["1"]["parents"] == [done] and fake.files["2"]["parents"] == [done]
+    assert fake.files["3"]["parents"] == ["inbox"]  # nicht unterstützt: bleibt liegen
+
+    # Zweiter Abruf: nichts Neues
+    r = client.post("/api/drive/run").json
+    assert r["imported"] == 0
+    assert client.get("/api/drive").json["last_result"]["imported"] == 0
+
+
+def test_drive_revoked_access(client, monkeypatch):
+    def revoked(method, url, **kw):
+        raise gdrive.DriveError('Google antwortet mit Fehler 400: {"error": "invalid_grant"}')
+    monkeypatch.setattr(gdrive, "http", revoked)
+    from dms import db
+    conn = db.connect(client.data_dir / "dms.sqlite")
+    gdrive.put(conn, client_id="c", client_secret="s", refresh_token="r")
+    conn.close()
+    r = client.post("/api/drive/run").json
+    assert "neu verbinden" in r["errors"][0]
+    assert client.get("/api/drive").json["connected"] is False

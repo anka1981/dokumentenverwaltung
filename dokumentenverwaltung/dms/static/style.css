@@ -232,3 +232,39 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   pointer-events: none;
 }
 .empty { text-align: center; padding: 40px 16px; color: var(--muted); }
+
+/* Kamera */
+.camera-dialog {
+  width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0;
+  border-radius: 0; background: #000; color: #fff;
+}
+.camera { position: relative; width: 100%; height: 100%; display: grid; place-items: center; overflow: hidden; }
+.camera video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+.camera-frame {
+  position: absolute; inset: 9% 7% 18%; border: 2px dashed rgba(255,255,255,.55); border-radius: 8px;
+  pointer-events: none;
+}
+.camera-top {
+  position: absolute; top: 0; left: 0; right: 0; padding: 12px 16px; padding-top: max(12px, env(safe-area-inset-top));
+  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  background: linear-gradient(rgba(0,0,0,.6), transparent); font-size: .9rem;
+}
+.camera-top .muted { color: #ccc; }
+.camera-bar {
+  position: absolute; bottom: 0; left: 0; right: 0; padding: 18px 16px; padding-bottom: max(18px, env(safe-area-inset-bottom));
+  display: flex; align-items: center; justify-content: space-between;
+  background: linear-gradient(transparent, rgba(0,0,0,.7));
+}
+.camera-btn { min-width: 100px; }
+.camera .btn.ghost { color: #fff; border-color: rgba(255,255,255,.5); }
+.shutter {
+  width: 72px; height: 72px; border-radius: 50%; border: 5px solid #fff; background: rgba(255,255,255,.25);
+  cursor: pointer; flex: none;
+}
+.shutter:active { background: #fff; }
+.camera-last {
+  position: absolute; right: 16px; bottom: 110px; width: 64px; height: 86px; object-fit: cover;
+  border: 2px solid #fff; border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,.5);
+}
+.camera.flash::after { content: ""; position: absolute; inset: 0; background: #fff; pointer-events: none; animation: flash .25s ease-out forwards; }
+@keyframes flash { from { opacity: .8; } to { opacity: 0; } }

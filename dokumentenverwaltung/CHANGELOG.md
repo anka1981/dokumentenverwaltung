@@ -1,5 +1,13 @@
 # Änderungen
 
+## 1.1.0
+
+- **Kamera direkt in der Seite:** „Seite fotografieren“ öffnet jetzt die Kamera auch in der
+  Home-Assistant-App (vorher öffnete sich dort nur die Fotoauswahl). Mehrere Seiten
+  nacheinander aufnehmen, dann „Fertig“.
+- **Import aus Google Drive:** Mit der Google-Drive-App in den Ordner „Dokumente-Eingang“
+  scannen – neue Dateien landen automatisch im Eingang (Einstellungen ⚙).
+
 ## 1.0.2
 
 - Fertige Images für Raspberry Pi und PC werden auf GitHub gebaut; Home Assistant lädt sie

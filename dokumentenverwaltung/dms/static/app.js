@@ -87,12 +87,12 @@ async function refreshCount() {
 
 // ------------------------------------------------------------------ Router
 
-const views = { eingang: viewInbox, archiv: viewArchive, ordner: viewFolders, doc: viewDocument };
+const views = { eingang: viewInbox, archiv: viewArchive, ordner: viewFolders, doc: viewDocument, einstellungen: viewSettings };
 
 async function route() {
   const [name, arg] = (location.hash.slice(1).split("?")[0] || "eingang").split("/");
   $$(".topbar nav a").forEach(a => a.classList.toggle("active", a.dataset.view === name));
-  $(".fab-group").hidden = name === "doc"; // Knöpfe würden das Formular verdecken
+  $(".fab-group").hidden = name === "doc" || name === "einstellungen"; // Knöpfe würden Formulare verdecken
   const view = views[name] || viewInbox;
   try {
     await view(arg);
@@ -130,12 +130,13 @@ function docCard(d) {
 }
 
 async function viewInbox() {
-  const docs = await api("/documents?status=eingang");
+  const [docs, drive] = await Promise.all([api("/documents?status=eingang"), api("/drive").catch(() => null)]);
   main.innerHTML = `
     <div class="row between wrap" style="margin-bottom:12px">
       <h2 style="margin:0">Eingang</h2>
-      <span class="muted small">Neue Dokumente prüfen und die vorgeschlagene Ablage bestätigen oder ändern.</span>
+      ${drive?.connected ? `<button class="btn small" id="drive-run">⟳ Aus Google Drive abrufen</button>` : ""}
     </div>
+    <p class="muted small" style="margin-top:0">Neue Dokumente prüfen und die vorgeschlagene Ablage bestätigen oder ändern.</p>
     ${docs.length ? `<div class="doc-list">${docs.map(docCard).join("")}</div>` : `
       <div class="card empty">
         <p><strong>Der Eingang ist leer.</strong></p>
@@ -143,6 +144,19 @@ async function viewInbox() {
         Word-, PDF- und andere Dateien hochladen. Auf dem Computer können Dateien auch einfach
         in dieses Fenster gezogen werden.</p>
       </div>`}`;
+  $("#drive-run")?.addEventListener("click", runDriveImport);
+}
+
+async function runDriveImport() {
+  busy("Google Drive wird abgerufen und Text erkannt…");
+  try {
+    const r = await api("/drive/run", { method: "POST" });
+    const parts = [`${r.imported} neu`];
+    if (r.duplicates) parts.push(`${r.duplicates} schon vorhanden`);
+    toast(`Google Drive: ${parts.join(", ")}` + (r.errors.length ? ` – ${r.errors[0]}` : ""), r.errors.length > 0);
+    route();
+  } catch (e) { toast(e.message, true); }
+  finally { busy(false); }
 }
 
 async function viewArchive() {
@@ -439,6 +453,92 @@ async function viewFolders() {
   });
 }
 
+// ------------------------------------------------------------ Einstellungen
+
+async function viewSettings() {
+  const st = await api("/drive");
+  const last = st.last_result;
+  const lastText = st.last_run
+    ? `Letzter Abruf: ${new Date(st.last_run).toLocaleString("de-DE")} – ${last.imported} neu` +
+      (last.duplicates ? `, ${last.duplicates} schon vorhanden` : "") +
+      (last.errors.length ? `<br><span style="color:var(--danger)">${last.errors.map(esc).join("<br>")}</span>` : "")
+    : "Noch nicht abgerufen.";
+
+  main.innerHTML = `
+    <div class="stack">
+      <div class="card stack">
+        <h2>Import aus Google Drive</h2>
+        <p class="muted small" style="margin:0">Mit der <b>Google-Drive-App</b> (＋ → Scannen) direkt in den Ordner
+        <b>${esc(st.folder)}</b> scannen. Neue Dateien erscheinen dann automatisch im Eingang und werden in Drive
+        nach <b>${esc(st.folder)}/importiert</b> verschoben.</p>
+        <div class="row wrap">
+          <span class="suggest-pill ${st.connected ? "" : "low"}">${st.connected ? "✓ Mit Google verbunden" : "Nicht verbunden"}</span>
+          ${st.connected ? `<button class="btn small" id="d-run">Jetzt abrufen</button>
+                            <button class="btn small ghost danger" id="d-disconnect">Trennen</button>` : ""}
+        </div>
+        ${st.connected ? `<div class="small muted">${lastText}</div>` : ""}
+      </div>
+
+      <div class="card stack">
+        <h3>${st.connected ? "Einstellungen" : "1. Zugangsdaten aus Google Cloud"}</h3>
+        ${st.connected ? "" : `<p class="muted small" style="margin:0">In der Google Cloud Console unter
+          <b>APIs und Dienste → Anmeldedaten → Anmeldedaten erstellen → OAuth-Client-ID</b> einen Client vom Typ
+          <b>Desktop-App</b> anlegen und Client-ID und Clientschlüssel hier eintragen.</p>`}
+        <label>Client-ID <input type="text" id="d-id" value="${esc(st.client_id)}" autocomplete="off"></label>
+        <label>Clientschlüssel <input type="text" id="d-secret" placeholder="${st.has_secret ? "gespeichert – nur zum Ändern ausfüllen" : ""}" autocomplete="off"></label>
+        <div class="grid2">
+          <label>Drive-Ordner <input type="text" id="d-folder" value="${esc(st.folder)}"></label>
+          <label>Abruf alle … Minuten <input type="number" id="d-interval" min="1" max="1440" value="${st.interval}"></label>
+        </div>
+        <label class="row" style="color:var(--text)"><input type="checkbox" id="d-enabled" ${st.enabled ? "checked" : ""}> Automatisch abrufen</label>
+        <div class="row end"><button class="btn" id="d-save">Speichern</button></div>
+      </div>
+
+      ${st.connected ? "" : `
+      <div class="card stack">
+        <h3>2. Mit Google verbinden</h3>
+        <p class="muted small" style="margin:0">Am besten am PC. Nach „Mit Google verbinden“ in dem neuen Fenster das Konto wählen.
+        Bei „Google hat diese App nicht überprüft“ auf <b>Erweitert → Weiter zu …</b> tippen und den Zugriff erlauben.
+        Danach zeigt der Browser <b>„Seite nicht erreichbar“</b> – das ist richtig so.
+        <b>Die komplette Adresse aus der Adressleiste</b> (beginnt mit <code>http://127.0.0.1:8765/?</code>) kopieren und unten einfügen.</p>
+        <div class="row wrap"><button class="btn primary" id="d-auth" ${st.client_id && st.has_secret ? "" : "disabled"}>Mit Google verbinden</button></div>
+        <label>Kopierte Adresse <input type="text" id="d-url" placeholder="http://127.0.0.1:8765/?state=…&code=…" autocomplete="off"></label>
+        <div class="row end"><button class="btn primary" id="d-connect">Verbindung herstellen</button></div>
+      </div>`}
+    </div>`;
+
+  $("#d-save").addEventListener("click", async () => {
+    try {
+      await api("/drive", { method: "PUT", json: {
+        client_id: $("#d-id").value, client_secret: $("#d-secret").value || null,
+        folder: $("#d-folder").value, interval: $("#d-interval").value, enabled: $("#d-enabled").checked,
+      } });
+      toast("Gespeichert");
+      route();
+    } catch (e) { toast(e.message, true); }
+  });
+  $("#d-auth")?.addEventListener("click", async () => {
+    const win = window.open("", "_blank"); // vor dem await öffnen, sonst blockiert der Popup-Blocker
+    try {
+      const { url } = await api("/drive/auth", { method: "POST" });
+      if (win) win.location = url; else location.href = url;
+    } catch (e) { win?.close(); toast(e.message, true); }
+  });
+  $("#d-connect")?.addEventListener("click", async () => {
+    try {
+      await api("/drive/connect", { method: "POST", json: { url: $("#d-url").value } });
+      toast("Mit Google Drive verbunden");
+      route();
+    } catch (e) { toast(e.message, true); }
+  });
+  $("#d-run")?.addEventListener("click", async () => { await runDriveImport(); });
+  $("#d-disconnect")?.addEventListener("click", async () => {
+    if (!confirm("Verbindung zu Google Drive trennen?")) return;
+    await api("/drive/disconnect", { method: "POST" });
+    route();
+  });
+}
+
 // ------------------------------------------------------------------ Upload
 
 function upload(formData, label) {
@@ -557,7 +657,7 @@ $("#btn-scan").addEventListener("click", () => {
   $("#scan-dialog").showModal();
   if (window.ocrAvailable === false) toast("Hinweis: Auf dem Server ist keine Texterkennung (Tesseract) installiert.", true);
 });
-$("#scan-add").addEventListener("click", () => $("#camera-input").click());
+$("#scan-add").addEventListener("click", openCamera);
 $("#scan-gallery").addEventListener("click", () => $("#gallery-input").click());
 $("#camera-input").addEventListener("change", e => { addScanFiles([...e.target.files]); e.target.value = ""; });
 $("#gallery-input").addEventListener("change", e => { addScanFiles([...e.target.files]); e.target.value = ""; });
@@ -573,6 +673,82 @@ $("#scan-upload").addEventListener("click", async () => {
   } catch (e) { toast(e.message, true); }
   finally { busy(false); }
 });
+
+// Eigene Kamera: Die Home-Assistant-App öffnet bei <input capture> nur die
+// Fotoauswahl. getUserMedia zeigt die Kamera direkt in der Seite.
+let cameraStream = null;
+let cameraShots = 0;
+
+async function openCamera() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    $("#camera-input").click(); // z. B. unverschlüsselte Verbindung
+    return;
+  }
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 4096 }, height: { ideal: 4096 } },
+    });
+  } catch (e) {
+    toast(e.name === "NotAllowedError"
+      ? "Kein Kamerazugriff erlaubt. Bitte in den App-/Browser-Einstellungen die Kamera freigeben – ersatzweise öffnet sich die Fotoauswahl."
+      : "Kamera nicht verfügbar – es öffnet sich die Fotoauswahl.", true);
+    $("#camera-input").click();
+    return;
+  }
+  cameraShots = 0;
+  $("#camera-count").textContent = `${scanPages.length} Seite${scanPages.length === 1 ? "" : "n"}`;
+  $("#camera-last").hidden = true;
+  $("#camera-video").srcObject = cameraStream;
+  $("#camera-dialog").showModal();
+}
+
+function closeCamera() {
+  cameraStream?.getTracks().forEach(t => t.stop());
+  cameraStream = null;
+  $("#camera-video").srcObject = null;
+  if ($("#camera-dialog").open) $("#camera-dialog").close();
+}
+
+async function grabPhoto() {
+  const track = cameraStream.getVideoTracks()[0];
+  // Volle Sensorauflösung, wo unterstützt (Chrome/Android), sonst Videobild
+  if ("ImageCapture" in window) {
+    try {
+      return await new ImageCapture(track).takePhoto();
+    } catch { /* weiter mit Videobild */ }
+  }
+  const video = $("#camera-video");
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
+  return new Promise(res => canvas.toBlob(res, "image/jpeg", 0.92));
+}
+
+$("#camera-shoot").addEventListener("click", async () => {
+  if (!cameraStream) return;
+  const cam = $(".camera");
+  cam.classList.remove("flash");
+  void cam.offsetWidth;
+  cam.classList.add("flash");
+  const blob = await grabPhoto();
+  if (!blob) { toast("Foto fehlgeschlagen", true); return; }
+  await addScanFiles([blob]);
+  cameraShots++;
+  const last = scanPages[scanPages.length - 1];
+  $("#camera-last").src = last.url;
+  $("#camera-last").hidden = false;
+  $("#camera-count").textContent = `${scanPages.length} Seite${scanPages.length === 1 ? "" : "n"} – nächste Seite oder „Fertig“`;
+});
+$("#camera-done").addEventListener("click", closeCamera);
+$("#camera-cancel").addEventListener("click", () => {
+  // nur die Fotos dieser Kamerasitzung verwerfen
+  scanPages.splice(scanPages.length - cameraShots).forEach(p => URL.revokeObjectURL(p.url));
+  renderScanPages();
+  closeCamera();
+});
+$("#camera-dialog").addEventListener("cancel", closeCamera);
 
 // ------------------------------------------------------------------ Start
 

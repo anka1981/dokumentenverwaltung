@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS documents (
     file_path       TEXT NOT NULL,           -- relativ zum Ablageverzeichnis
     sha256          TEXT NOT NULL UNIQUE,
     size            INTEGER NOT NULL,
-    source          TEXT NOT NULL,           -- upload | scan
+    source          TEXT NOT NULL,           -- upload | scan | drive
     status          TEXT NOT NULL DEFAULT 'eingang',  -- eingang | abgelegt
     folder_id       INTEGER REFERENCES folders(id) ON DELETE SET NULL,
     suggestion      TEXT,                    -- JSON: Ordnervorschläge mit Begründung
@@ -70,6 +70,11 @@ CREATE TABLE IF NOT EXISTS folder_terms (
 CREATE TABLE IF NOT EXISTS term_df (
     term  TEXT PRIMARY KEY,
     df    INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key    TEXT PRIMARY KEY,
+    value  TEXT NOT NULL
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(

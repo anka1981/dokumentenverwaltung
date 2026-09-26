@@ -7,7 +7,7 @@
 import argparse
 import os
 
-from dms import create_app
+from dms import create_app, gdrive
 
 
 def main():
@@ -18,6 +18,8 @@ def main():
     args = p.parse_args()
 
     app = create_app(args.data)
+    data_dir = app.config["DATA_DIR"]
+    gdrive.start_scheduler(data_dir / "dms.sqlite", data_dir)
     if args.host not in ("127.0.0.1", "localhost") and not os.environ.get("DMS_PASSWORD") \
             and not os.environ.get("DMS_TRUSTED_IPS"):
         print("Hinweis: Ohne DMS_PASSWORD kann jeder im Netzwerk auf die Dokumente zugreifen.")

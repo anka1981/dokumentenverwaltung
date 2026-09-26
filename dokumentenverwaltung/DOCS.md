@@ -22,6 +22,27 @@ Nach dem Start erscheint **Dokumente** in der Seitenleiste von Home Assistant, i
 
 Jede Bestätigung und jede Korrektur verbessert die nächsten Vorschläge.
 
+## Scannen mit der Google-Drive-App (automatischer Import)
+
+Die Scanfunktion der Google-Drive-App schneidet Seiten automatisch zu und entzerrt sie.
+Die Dokumentenverwaltung kann einen Drive-Ordner regelmäßig abholen:
+
+1. **Google Cloud Console** (dasselbe Projekt wie für das Backup) → **APIs und Dienste →
+   Anmeldedaten → Anmeldedaten erstellen → OAuth-Client-ID** → Anwendungstyp
+   **Desktop-App**, Name z. B. `Dokumentenverwaltung` → **Erstellen**. Client-ID und
+   Clientschlüssel kopieren. Die Google Drive API muss aktiviert sein.
+2. In **Dokumente → ⚙ Einstellungen** Client-ID und Clientschlüssel eintragen, **Speichern**.
+3. **Mit Google verbinden** (am besten am PC), Konto wählen, bei „Google hat diese App nicht
+   überprüft“ **Erweitert → Weiter zu …**, Zugriff erlauben. Der Browser zeigt danach
+   „Seite nicht erreichbar“ – die **komplette Adresse** aus der Adressleiste
+   (`http://127.0.0.1:8765/?…`) kopieren, einfügen, **Verbindung herstellen**.
+4. In der Google-Drive-App mit **＋ → Scannen** scannen und im Ordner
+   **Dokumente-Eingang** speichern (legt die Dokumentenverwaltung beim ersten Abruf an).
+
+Abgeholt wird alle 10 Minuten (einstellbar) oder sofort mit „Aus Google Drive abrufen“ im
+Eingang. Importierte Dateien werden in Drive nach `Dokumente-Eingang/importiert` verschoben;
+nicht unterstützte Dateien bleiben liegen und werden in den Einstellungen gemeldet.
+
 ## Optionen
 
 | Option | Bedeutung |

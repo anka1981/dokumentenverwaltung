@@ -61,12 +61,12 @@ class Store:
 
     # ------------------------------------------------------------- Import
 
-    def ingest_files(self, uploads: list[Upload]) -> list[dict]:
+    def ingest_files(self, uploads: list[Upload], source: str = "upload") -> list[dict]:
         """Jede Datei wird ein eigenes Dokument."""
         results = []
         for up in uploads:
             try:
-                results.append({"document": self._ingest_one(up.filename, up.data, "upload")})
+                results.append({"document": self._ingest_one(up.filename, up.data, source)})
             except Conflict as exc:
                 results.append({"error": str(exc), "filename": up.filename, "document_id": exc.document_id})
             except DmsError as exc:
