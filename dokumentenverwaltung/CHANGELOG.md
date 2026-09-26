@@ -1,5 +1,11 @@
 # Änderungen
 
+## 1.0.2
+
+- Fertige Images für Raspberry Pi und PC werden auf GitHub gebaut; Home Assistant lädt sie
+  nur noch herunter. Der Build auf dem Pi (der dort abstürzte) entfällt, die Installation
+  geht deutlich schneller.
+
 ## 1.0.1
 
 - Build auf dem Raspberry Pi repariert: Multi-Arch-Basisimage `base-debian:trixie`
