@@ -12,8 +12,8 @@ Gerät. Das ist kostenlos, ohne Konto, ohne Internet und ohne Seitenlimit.
 Nach dem Start erscheint **Dokumente** in der Seitenleiste von Home Assistant, im Browser
 (z. B. über deine Home-Assistant-Adresse) genauso wie in der Home-Assistant-App auf dem Handy.
 
-- **Scannen:** öffnet die Handykamera. Seite für Seite fotografieren, dann „Hochladen &
-  erkennen“. Mehrere Seiten werden ein PDF und automatisch aufrecht gedreht.
+- **Scannen:** mit der **Google-Drive-App** in den Ordner **Dokumente-Eingang** scannen
+  (siehe unten). **⟳ Drive** holt neue Scans sofort ab, sonst automatisch alle 10 Minuten.
 - **Datei:** PDF, Word, LibreOffice, Excel, PowerPoint, RTF, E-Mails (.eml), Bilder.
 - **Eingang:** neue Dokumente mit Ordnervorschlag, Sicherheit und Begründung. Titel, Datum,
   Absender und Schlagwörter lassen sich prüfen und ändern, dann **Bestätigen & ablegen**.

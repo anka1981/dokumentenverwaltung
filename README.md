@@ -2,7 +2,7 @@
 
 Home-Assistant-Add-on zur Verwaltung privater Unterlagen:
 
-- Einspielen per **Datei** (PDF, Word, LibreOffice, Excel, Bilder …) oder per **Handy-Scan**
+- Einspielen per **Datei** (PDF, Word, LibreOffice, Excel, Bilder …) oder per **Scan mit der Google-Drive-App** (automatischer Import)
 - **Kostenlose Texterkennung** mit Tesseract, lokal auf dem Raspberry Pi
 - **Verschlagwortung**: Schlagwörter, Dokumentart, Datum, Betrag, IBAN, Absender
 - **Ablagevorschlag** mit Sicherheit und Begründung. Abgelegt wird erst nach Bestätigung oder

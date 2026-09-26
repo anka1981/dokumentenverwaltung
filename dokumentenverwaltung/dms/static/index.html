@@ -26,52 +26,11 @@
 
   <div class="fab-group">
     <button class="fab secondary" id="btn-file" title="Datei hochladen">Datei</button>
-    <button class="fab" id="btn-scan" title="Mit der Kamera scannen">Scannen</button>
+    <button class="fab" id="btn-drive" title="Scans aus Google Drive abholen" hidden>⟳ Drive</button>
   </div>
 
   <input type="file" id="file-input" multiple hidden
          accept=".pdf,.doc,.docx,.docm,.odt,.ott,.rtf,.txt,.md,.csv,.html,.htm,.eml,.xlsx,.xlsm,.ods,.pptx,.odp,image/*">
-  <input type="file" id="camera-input" accept="image/*" capture="environment" hidden>
-  <input type="file" id="gallery-input" accept="image/*" multiple hidden>
-
-  <!-- Scan: mehrere Seiten sammeln -->
-  <dialog id="scan-dialog">
-    <form method="dialog" class="dialog-body">
-      <h2>Dokument scannen</h2>
-      <p class="muted">Seite für Seite fotografieren. Das Dokument möglichst flach, hell und formatfüllend aufnehmen.</p>
-      <div id="camera-problem" class="warning" hidden></div>
-      <div id="scan-pages" class="scan-pages"></div>
-      <div class="row wrap">
-        <button type="button" class="btn" id="scan-add">📷 Seite fotografieren</button>
-        <button type="button" class="btn ghost" id="scan-gallery">Aus Galerie</button>
-      </div>
-      <label>Titel (optional)
-        <input type="text" id="scan-title" placeholder="wird sonst aus dem Text vorgeschlagen">
-      </label>
-      <div class="row end">
-        <button value="cancel" class="btn ghost">Abbrechen</button>
-        <button type="button" class="btn primary" id="scan-upload" disabled>Hochladen &amp; erkennen</button>
-      </div>
-    </form>
-  </dialog>
-
-  <!-- Kamera direkt in der Seite (funktioniert auch in der Home-Assistant-App) -->
-  <dialog id="camera-dialog" class="camera-dialog">
-    <div class="camera">
-      <video id="camera-video" autoplay playsinline muted></video>
-      <div class="camera-frame" aria-hidden="true"></div>
-      <div class="camera-top">
-        <span id="camera-count">0 Seiten</span>
-        <span class="muted">Dokument formatfüllend und gerade aufnehmen</span>
-      </div>
-      <div class="camera-bar">
-        <button type="button" class="btn ghost camera-btn" id="camera-cancel">Abbrechen</button>
-        <button type="button" class="shutter" id="camera-shoot" aria-label="Foto aufnehmen"></button>
-        <button type="button" class="btn primary camera-btn" id="camera-done">Fertig</button>
-      </div>
-      <img id="camera-last" class="camera-last" alt="" hidden>
-    </div>
-  </dialog>
 
   <div id="busy" class="busy" hidden>
     <div class="busy-box">

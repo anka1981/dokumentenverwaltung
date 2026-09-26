@@ -107,7 +107,8 @@ async function refreshCount() {
     const b = $("#inbox-count");
     b.textContent = s.eingang;
     b.hidden = !s.eingang;
-    window.ocrAvailable = s.ocr;
+    const drive = await api("/drive");
+    $("#btn-drive").hidden = !drive.connected;
   } catch { /* offline */ }
 }
 
@@ -158,21 +159,20 @@ function docCard(d) {
 }
 
 async function viewInbox() {
-  const [docs, drive] = await Promise.all([api("/documents?status=eingang"), api("/drive").catch(() => null)]);
+  const docs = await api("/documents?status=eingang");
   main.innerHTML = `
     <div class="row between wrap" style="margin-bottom:12px">
       <h2 style="margin:0">Eingang</h2>
-      ${drive?.connected ? `<button class="btn small" id="drive-run">⟳ Aus Google Drive abrufen</button>` : ""}
     </div>
     <p class="muted small" style="margin-top:0">Neue Dokumente prüfen und die vorgeschlagene Ablage bestätigen oder ändern.</p>
     ${docs.length ? `<div class="doc-list">${docs.map(docCard).join("")}</div>` : `
       <div class="card empty">
         <p><strong>Der Eingang ist leer.</strong></p>
-        <p>Mit <b>Scannen</b> ein Papierdokument mit der Handykamera aufnehmen oder mit <b>Datei</b>
-        Word-, PDF- und andere Dateien hochladen. Auf dem Computer können Dateien auch einfach
-        in dieses Fenster gezogen werden.</p>
+        <p>Papierdokumente mit der <b>Google-Drive-App</b> in den Ordner <b>Dokumente-Eingang</b> scannen
+        (dort <b>＋ → Scannen</b>) – sie erscheinen automatisch hier, sofort mit <b>⟳ Drive</b>.
+        Mit <b>Datei</b> lassen sich Word-, PDF- und andere Dateien hochladen; am Computer auch
+        einfach in dieses Fenster ziehen.</p>
       </div>`}`;
-  $("#drive-run")?.addEventListener("click", runDriveImport);
 }
 
 async function runDriveImport() {
@@ -646,182 +646,8 @@ window.addEventListener("drop", e => {
   if (e.dataTransfer?.files.length) uploadFiles(e.dataTransfer.files);
 });
 
-// ------------------------------------------------------------ Handy-Scan
-
-const scanPages = []; // { blob, url }
-
-async function shrink(file) {
-  // Große Handyfotos vor dem Hochladen verkleinern (spart Zeit im Mobilfunk);
-  // createImageBitmap berücksichtigt die EXIF-Ausrichtung.
-  try {
-    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
-    const max = 3000;
-    const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
-    if (scale === 1 && file.size < 4e6) return file;
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bmp.width * scale);
-    canvas.height = Math.round(bmp.height * scale);
-    canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
-    return await new Promise(res => canvas.toBlob(b => res(b || file), "image/jpeg", 0.88));
-  } catch {
-    return file;
-  }
-}
-
-function renderScanPages() {
-  $("#scan-pages").innerHTML = scanPages.map((p, i) => `
-    <div class="scan-page">
-      <img src="${p.url}" alt="Seite ${i + 1}">
-      <span class="num">${i + 1}</span>
-      <div class="tools">
-        <button type="button" data-act="left" data-i="${i}" ${i === 0 ? "disabled" : ""} aria-label="nach vorne">◀</button>
-        <button type="button" data-act="del" data-i="${i}" aria-label="Seite entfernen">🗑</button>
-        <button type="button" data-act="right" data-i="${i}" ${i === scanPages.length - 1 ? "disabled" : ""} aria-label="nach hinten">▶</button>
-      </div>
-    </div>`).join("");
-  $("#scan-upload").disabled = !scanPages.length;
-  $$("#scan-pages button").forEach(b => b.addEventListener("click", () => {
-    const i = +b.dataset.i;
-    if (b.dataset.act === "del") URL.revokeObjectURL(scanPages.splice(i, 1)[0].url);
-    else {
-      const j = b.dataset.act === "left" ? i - 1 : i + 1;
-      [scanPages[i], scanPages[j]] = [scanPages[j], scanPages[i]];
-    }
-    renderScanPages();
-  }));
-}
-
-async function addScanFiles(files) {
-  for (const f of files) {
-    const blob = await shrink(f);
-    scanPages.push({ blob, url: URL.createObjectURL(blob) });
-  }
-  renderScanPages();
-}
-
-$("#btn-scan").addEventListener("click", () => {
-  scanPages.splice(0).forEach(p => URL.revokeObjectURL(p.url));
-  $("#scan-title").value = "";
-  cameraProblem("");
-  renderScanPages();
-  $("#scan-dialog").showModal();
-  if (window.ocrAvailable === false) toast("Hinweis: Auf dem Server ist keine Texterkennung (Tesseract) installiert.", true);
-});
-$("#scan-add").addEventListener("click", openCamera);
-$("#scan-gallery").addEventListener("click", () => $("#gallery-input").click());
-$("#camera-input").addEventListener("change", e => { addScanFiles([...e.target.files]); e.target.value = ""; });
-$("#gallery-input").addEventListener("change", e => { addScanFiles([...e.target.files]); e.target.value = ""; });
-
-$("#scan-upload").addEventListener("click", async () => {
-  const fd = new FormData();
-  fd.append("mode", "scan");
-  if ($("#scan-title").value.trim()) fd.append("title", $("#scan-title").value.trim());
-  scanPages.forEach((p, i) => fd.append("files", p.blob, `seite-${i + 1}.jpg`));
-  $("#scan-dialog").close();
-  try {
-    await handleResults(await upload(fd, `Scan (${scanPages.length} Seite${scanPages.length === 1 ? "" : "n"})`));
-  } catch (e) { toast(e.message, true); }
-  finally { busy(false); }
-});
-
-// Eigene Kamera: Die Home-Assistant-App öffnet bei <input capture> nur die
-// Fotoauswahl. getUserMedia zeigt die Kamera direkt in der Seite.
-let cameraStream = null;
-let cameraShots = 0;
-
-function cameraProblem(text) {
-  const box = $("#camera-problem");
-  box.innerHTML = text ? `📷 ${text}<br><span class="small">Stattdessen kannst du mit „Aus Galerie“ vorhandene Fotos
-    wählen oder mit der Google-Drive-App scannen.</span>` : "";
-  box.hidden = !text;
-}
-
-async function openCamera() {
-  cameraProblem("");
-  clientLog(`Kamera: secure=${window.isSecureContext} mediaDevices=${!!navigator.mediaDevices?.getUserMedia} origin=${location.origin}`);
-  if (!window.isSecureContext) {
-    cameraProblem(`Die Kamera geht nur über eine verschlüsselte Verbindung (https). Du bist über
-      <b>${esc(location.origin)}</b> verbunden. In der Home-Assistant-App unter <b>Einstellungen → Companion-App →
-      Server</b> die interne Adresse entfernen oder auf https://frieda130.site ändern – oder die Seite in Chrome
-      über https://frieda130.site öffnen.`);
-    return;
-  }
-  if (!navigator.mediaDevices?.getUserMedia) {
-    cameraProblem("Diese App bzw. dieser Browser unterstützt keinen Kamerazugriff aus Webseiten. Bitte in Chrome über https://frieda130.site öffnen.");
-    return;
-  }
-  try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: { facingMode: { ideal: "environment" }, width: { ideal: 4096 }, height: { ideal: 4096 } },
-    });
-  } catch (e) {
-    clientLog(`Kamera-Fehler: ${e.name}: ${e.message}`);
-    const reasons = {
-      NotAllowedError: "Der Kamerazugriff wurde verweigert. Bitte in den Android-Einstellungen der App (bzw. des Browsers) unter <b>Berechtigungen → Kamera</b> „Zulassen“ wählen und es erneut versuchen.",
-      NotFoundError: "Es wurde keine Kamera gefunden.",
-      NotReadableError: "Die Kamera wird gerade von einer anderen App benutzt.",
-    };
-    cameraProblem((reasons[e.name] || "Die Kamera konnte nicht gestartet werden.") + ` <span class="small">(${esc(e.name)}: ${esc(e.message)})</span>`);
-    return;
-  }
-  cameraShots = 0;
-  $("#camera-count").textContent = `${scanPages.length} Seite${scanPages.length === 1 ? "" : "n"}`;
-  $("#camera-last").hidden = true;
-  $("#camera-video").srcObject = cameraStream;
-  $("#camera-dialog").showModal();
-}
-
-function closeCamera() {
-  cameraStream?.getTracks().forEach(t => t.stop());
-  cameraStream = null;
-  $("#camera-video").srcObject = null;
-  if ($("#camera-dialog").open) $("#camera-dialog").close();
-}
-
-async function grabPhoto() {
-  const track = cameraStream.getVideoTracks()[0];
-  // Volle Sensorauflösung, wo unterstützt (Chrome/Android), sonst Videobild
-  if ("ImageCapture" in window) {
-    try {
-      return await new ImageCapture(track).takePhoto();
-    } catch { /* weiter mit Videobild */ }
-  }
-  const video = $("#camera-video");
-  const canvas = document.createElement("canvas");
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  canvas.getContext("2d").drawImage(video, 0, 0);
-  return new Promise(res => canvas.toBlob(res, "image/jpeg", 0.92));
-}
-
-$("#camera-shoot").addEventListener("click", async () => {
-  if (!cameraStream) return;
-  const cam = $(".camera");
-  cam.classList.remove("flash");
-  void cam.offsetWidth;
-  cam.classList.add("flash");
-  const blob = await grabPhoto();
-  if (!blob) { toast("Foto fehlgeschlagen", true); return; }
-  await addScanFiles([blob]);
-  cameraShots++;
-  const last = scanPages[scanPages.length - 1];
-  $("#camera-last").src = last.url;
-  $("#camera-last").hidden = false;
-  $("#camera-count").textContent = `${scanPages.length} Seite${scanPages.length === 1 ? "" : "n"} – nächste Seite oder „Fertig“`;
-});
-$("#camera-done").addEventListener("click", closeCamera);
-$("#camera-cancel").addEventListener("click", () => {
-  // nur die Fotos dieser Kamerasitzung verwerfen
-  scanPages.splice(scanPages.length - cameraShots).forEach(p => URL.revokeObjectURL(p.url));
-  renderScanPages();
-  closeCamera();
-});
-$("#camera-dialog").addEventListener("cancel", closeCamera);
+$("#btn-drive").addEventListener("click", runDriveImport);
 
 // ------------------------------------------------------------------ Start
 
-clientLog(`Seite geladen: ${document.querySelector('script[src*="app.js"]')?.getAttribute("src")} ` +
-  `secure=${window.isSecureContext} kamera=${!!navigator.mediaDevices?.getUserMedia} ` +
-  `iframe=${window.top !== window} ua=${navigator.userAgent}`);
 route();

@@ -1,8 +1,8 @@
 name: Dokumentenverwaltung
-version: "1.2.2"
+version: "1.2.3"
 slug: dokumentenverwaltung
 description: >-
-  Dokumente per Datei oder Handy-Scan einspielen, Text kostenlos erkennen (Tesseract),
+  Dokumente per Datei oder Google-Drive-Scan einspielen, Text kostenlos erkennen (Tesseract),
   verschlagworten und mit Ablagevorschlag einsortieren.
 url: https://github.com/anka1981/dokumentenverwaltung
 image: ghcr.io/anka1981/{arch}-dokumentenverwaltung

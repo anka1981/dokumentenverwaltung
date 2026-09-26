@@ -1,5 +1,11 @@
 # Änderungen
 
+## 1.2.3
+
+- Eigene Kamerafunktion entfernt – der Scan der Google-Drive-App liefert deutlich bessere
+  Ergebnisse. Der Knopf „Scannen“ ist jetzt „⟳ Drive“ und holt neue Scans sofort ab
+  (erscheint, sobald Google Drive verbunden ist).
+
 ## 1.2.2
 
 - Neue Einstiegsadresse (`…/app/`): Die Home-Assistant-App zeigte weiter eine alte,
