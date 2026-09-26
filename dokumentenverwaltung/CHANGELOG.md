@@ -1,5 +1,11 @@
 # Änderungen
 
+## 1.1.2
+
+- Nach einem Update lädt die Home-Assistant-App jetzt sicher die neue Oberfläche
+  (vorher konnte sie die alte Version aus dem Zwischenspeicher weiter anzeigen).
+- Versionsnummer und Verbindungsart (http/https) unten in den Einstellungen ⚙.
+
 ## 1.1.1
 
 - Absturz beim Import behoben, wenn im erkannten Text IBAN-ähnliche Zeichen über einen

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import os
 from pathlib import Path
@@ -83,13 +84,32 @@ def create_app(data_dir: str | Path | None = None, password: str | None = None,
 
     # ------------------------------------------------------------ Oberfläche
 
+    # Jede Version bekommt eigene Adressen für Skript und Stylesheet (…?v=<hash>),
+    # sonst zeigt die Home-Assistant-App nach einem Update die alte Seite aus dem Cache.
+    version = hashlib.sha256(b"".join(
+        (STATIC / n).read_bytes() for n in ("app.js", "style.css", "index.html"))).hexdigest()[:12]
+
     @app.get("/")
     def index():
-        return send_from_directory(STATIC, "index.html")
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+        html = html.replace('static/app.js"', f'static/app.js?v={version}"')
+        html = html.replace('static/style.css"', f'static/style.css?v={version}"')
+        return Response(html, mimetype="text/html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
     @app.get("/static/<path:name>")
     def static_file(name):
-        return send_from_directory(STATIC, name)
+        res = send_from_directory(STATIC, name)
+        if request.args.get("v") == version:
+            res.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            res.headers["Cache-Control"] = "no-cache"
+        return res
+
+    @app.after_request
+    def no_cache_api(res):
+        if request.path.startswith("/api/") and "Cache-Control" not in res.headers:
+            res.headers["Cache-Control"] = "no-store"
+        return res
 
     # ------------------------------------------------------------ Dokumente
 

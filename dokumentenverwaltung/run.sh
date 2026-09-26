@@ -12,6 +12,8 @@ if bashio::config.has_value 'passwort'; then
     DMS_PASSWORD="$(bashio::config 'passwort')"
     export DMS_PASSWORD
 fi
+DMS_VERSION="$(bashio::addon.version)"
+export DMS_VERSION
 # Zugriffe über die Home-Assistant-Oberfläche (Ingress) sind bereits angemeldet.
 export DMS_TRUSTED_IPS=172.30.32.2
 

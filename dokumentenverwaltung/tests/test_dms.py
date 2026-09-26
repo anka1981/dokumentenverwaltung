@@ -127,7 +127,7 @@ def test_upload_suggest_confirm_and_file_on_disk(client):
     assert filed["file_path"] == "Wohnen/Energie/2026-03-14_Stromabrechnung 2025.pdf"
     assert (client.data_dir / "ablage" / filed["file_path"]).is_file()
     assert "Strom" in filed["tags"]
-    assert client.get("/api/status").json == {"eingang": 0, "abgelegt": 1, "ocr": extract.ocr_available()}
+    assert client.get("/api/status").json == {"eingang": 0, "abgelegt": 1, "ocr": extract.ocr_available(), "version": "dev"}
     assert client.get(f"/api/documents/{doc['id']}/content").data[:5] == b"%PDF-"
 
 
@@ -403,3 +403,15 @@ def test_unexpected_error_is_json(client, monkeypatch):
     assert res.status_code == 500
     assert "ZeroDivisionError" in res.json["error"]
     assert client.get("/api/gibtsnicht").status_code == 404
+
+
+def test_index_busts_cache(client):
+    res = client.get("/")
+    assert "no-store" in res.headers["Cache-Control"]
+    html = res.get_data(as_text=True)
+    import re
+    v = re.search(r'static/app\.js\?v=([0-9a-f]+)"', html).group(1)
+    assert f'static/style.css?v={v}"' in html
+    assert "immutable" in client.get(f"/static/app.js?v={v}").headers["Cache-Control"]
+    assert client.get("/static/app.js").headers["Cache-Control"] == "no-cache"
+    assert client.get("/api/status").headers["Cache-Control"] == "no-store"

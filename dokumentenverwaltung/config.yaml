@@ -1,5 +1,5 @@
 name: Dokumentenverwaltung
-version: "1.1.1"
+version: "1.1.2"
 slug: dokumentenverwaltung
 description: >-
   Dokumente per Datei oder Handy-Scan einspielen, Text kostenlos erkennen (Tesseract),

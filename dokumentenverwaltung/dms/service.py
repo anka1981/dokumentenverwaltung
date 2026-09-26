@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import re
 import shutil
 import sqlite3
@@ -217,6 +218,7 @@ class Store:
             "eingang": c.execute("SELECT COUNT(*) FROM documents WHERE status='eingang'").fetchone()[0],
             "abgelegt": c.execute("SELECT COUNT(*) FROM documents WHERE status='abgelegt'").fetchone()[0],
             "ocr": extract.ocr_available(),
+            "version": os.environ.get("DMS_VERSION", "dev"),
         }
 
     def all_tags(self) -> list[dict]:

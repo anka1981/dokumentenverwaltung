@@ -456,7 +456,7 @@ async function viewFolders() {
 // ------------------------------------------------------------ Einstellungen
 
 async function viewSettings() {
-  const st = await api("/drive");
+  const [st, sys] = await Promise.all([api("/drive"), api("/status")]);
   const last = st.last_result;
   const lastText = st.last_run
     ? `Letzter Abruf: ${new Date(st.last_run).toLocaleString("de-DE")} – ${last.imported} neu` +
@@ -505,6 +505,8 @@ async function viewSettings() {
         <label>Kopierte Adresse <input type="text" id="d-url" placeholder="http://127.0.0.1:8765/?state=…&code=…" autocomplete="off"></label>
         <div class="row end"><button class="btn primary" id="d-connect">Verbindung herstellen</button></div>
       </div>`}
+      <p class="small muted" style="text-align:center">Dokumentenverwaltung ${esc(sys.version)} ·
+        Texterkennung ${sys.ocr ? "aktiv" : "nicht verfügbar"} · Verbindung ${esc(location.protocol.replace(":", ""))}</p>
     </div>`;
 
   $("#d-save").addEventListener("click", async () => {
