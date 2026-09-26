@@ -1,0 +1,9 @@
+{
+  "name": "Dokumentenverwaltung",
+  "short_name": "Dokumente",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f4f5f7",
+  "theme_color": "#2f5d8a",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

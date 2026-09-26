@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2f5d8a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Dokumente</title>
+  <link rel="manifest" href="static/manifest.json">
+  <link rel="icon" href="static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1><a href="#eingang">Dokumente</a></h1>
+    <nav>
+      <a href="#eingang" data-view="eingang">Eingang <span id="inbox-count" class="badge" hidden></span></a>
+      <a href="#archiv" data-view="archiv">Archiv</a>
+      <a href="#ordner" data-view="ordner">Ordner</a>
+    </nav>
+  </header>
+
+  <main id="main"></main>
+
+  <div class="fab-group">
+    <button class="fab secondary" id="btn-file" title="Datei hochladen">Datei</button>
+    <button class="fab" id="btn-scan" title="Mit der Kamera scannen">Scannen</button>
+  </div>
+
+  <input type="file" id="file-input" multiple hidden
+         accept=".pdf,.doc,.docx,.docm,.odt,.ott,.rtf,.txt,.md,.csv,.html,.htm,.eml,.xlsx,.xlsm,.ods,.pptx,.odp,image/*">
+  <input type="file" id="camera-input" accept="image/*" capture="environment" hidden>
+  <input type="file" id="gallery-input" accept="image/*" multiple hidden>
+
+  <!-- Scan: mehrere Seiten sammeln -->
+  <dialog id="scan-dialog">
+    <form method="dialog" class="dialog-body">
+      <h2>Dokument scannen</h2>
+      <p class="muted">Seite für Seite fotografieren. Das Dokument möglichst flach, hell und formatfüllend aufnehmen.</p>
+      <div id="scan-pages" class="scan-pages"></div>
+      <div class="row wrap">
+        <button type="button" class="btn" id="scan-add">📷 Seite fotografieren</button>
+        <button type="button" class="btn ghost" id="scan-gallery">Aus Galerie</button>
+      </div>
+      <label>Titel (optional)
+        <input type="text" id="scan-title" placeholder="wird sonst aus dem Text vorgeschlagen">
+      </label>
+      <div class="row end">
+        <button value="cancel" class="btn ghost">Abbrechen</button>
+        <button type="button" class="btn primary" id="scan-upload" disabled>Hochladen &amp; erkennen</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="busy" class="busy" hidden>
+    <div class="busy-box">
+      <div class="spinner"></div>
+      <div id="busy-text">Wird verarbeitet…</div>
+      <progress id="busy-progress" max="100" value="0"></progress>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+  <div id="drop-hint" class="drop-hint" hidden>Dateien hier ablegen</div>
+
+  <script src="static/app.js"></script>
+</body>
+</html>
