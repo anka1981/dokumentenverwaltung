@@ -13,6 +13,25 @@ from . import db, gdrive
 from .service import Conflict, DmsError, Store, Upload
 
 STATIC = Path(__file__).parent / "static"
+# Einstiegsadresse unter Home Assistant (config.yaml: ingress_entry). Eine neue
+# Adresse umgeht alte Kopien der Seite im Speicher der Home-Assistant-App.
+ENTRY_PREFIX = "/app"
+
+
+class _EntryPrefix:
+    """/app/… wird wie /… behandelt (Seite, Skripte und API)."""
+
+    def __init__(self, wsgi):
+        self.wsgi = wsgi
+
+    def __call__(self, environ, start_response):
+        path = environ.get("PATH_INFO", "")
+        if path == ENTRY_PREFIX:
+            start_response("301 Moved Permanently", [("Location", ENTRY_PREFIX[1:] + "/")])
+            return [b""]
+        if path.startswith(ENTRY_PREFIX + "/"):
+            environ["PATH_INFO"] = path[len(ENTRY_PREFIX):]
+        return self.wsgi(environ, start_response)
 
 
 def create_app(data_dir: str | Path | None = None, password: str | None = None,
@@ -32,6 +51,7 @@ def create_app(data_dir: str | Path | None = None, password: str | None = None,
     conn.close()
 
     app = Flask(__name__, static_folder=None)
+    app.wsgi_app = _EntryPrefix(app.wsgi_app)
     app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
     app.config["DATA_DIR"] = data_dir
 
@@ -110,7 +130,7 @@ def create_app(data_dir: str | Path | None = None, password: str | None = None,
         # Diagnose: Wer lädt die Oberfläche (HA-App oder Browser) und in welcher Version?
         if request.path == "/" or request.path.startswith("/static/app.js"):
             ua = request.headers.get("User-Agent", "")
-            client = "HA-App" if "Home Assistant" in ua or "HomeAssistant" in ua else "Browser"
+            client = "HA-App" if "; wv)" in ua or "Home Assistant" in ua or "HomeAssistant" in ua else "Browser"
             app.logger.warning("Seitenabruf %s %s → %s (%s, %s) %s", request.path, request.query_string.decode()[:30],
                                res.status_code, client, request.headers.get("X-Ingress-Path", "ohne Ingress"), ua[:160])
         return res

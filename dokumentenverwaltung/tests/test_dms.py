@@ -530,3 +530,14 @@ def test_optimize_existing_documents(client):
     service.optimize_existing(client.data_dir / "dms.sqlite", client.data_dir).join(timeout=60)
     assert conn.execute("SELECT stored_size FROM documents WHERE id = ?", (doc["id"],)).fetchone()[0] is not None
     conn.close()
+
+
+def test_entry_prefix_for_home_assistant(client):
+    """ingress_entry: app/ – Seite, Skript und API funktionieren auch unter /app/."""
+    import re
+    html = client.get("/app/").get_data(as_text=True)
+    v = re.search(r'static/app\.js\?v=([0-9a-f]+)"', html).group(1)
+    assert client.get(f"/app/static/app.js?v={v}").status_code == 200
+    assert client.get("/app/api/status").json["eingang"] == 0
+    assert client.get("/app").status_code == 301
+    assert client.get("/api/status").status_code == 200  # ohne Präfix weiterhin

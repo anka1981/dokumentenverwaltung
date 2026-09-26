@@ -1,5 +1,11 @@
 # Änderungen
 
+## 1.2.2
+
+- Neue Einstiegsadresse (`…/app/`): Die Home-Assistant-App zeigte weiter eine alte,
+  gespeicherte Kopie der Oberfläche (Einstellungen ließen sich nicht öffnen, Kamera
+  öffnete die Fotoauswahl). Unter der neuen Adresse lädt sie die aktuelle Version.
+
 ## 1.2.1
 
 - Diagnose: Jeder Aufruf der Oberfläche wird mit aufrufender App (HA-App/Browser)

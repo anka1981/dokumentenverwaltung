@@ -1,5 +1,5 @@
 name: Dokumentenverwaltung
-version: "1.2.1"
+version: "1.2.2"
 slug: dokumentenverwaltung
 description: >-
   Dokumente per Datei oder Handy-Scan einspielen, Text kostenlos erkennen (Tesseract),
@@ -11,6 +11,7 @@ arch:
   - amd64
 init: false
 ingress: true
+ingress_entry: app/
 ingress_stream: true
 panel_icon: mdi:file-document-multiple-outline
 panel_title: Dokumente
