@@ -74,6 +74,8 @@ function busy(text, progress) {
 const fmtDate = iso => (iso ? new Date(iso + "T00:00:00").toLocaleDateString("de-DE") : "");
 const fmtAmount = a => (a == null ? "" : a.toLocaleString("de-DE", { style: "currency", currency: "EUR" }));
 const pct = s => Math.round(s * 100) + " %";
+const fmtBytes = b => b >= 1e9 ? (b / 1e9).toFixed(2).replace(".", ",") + " GB"
+  : b >= 1e6 ? (b / 1e6).toFixed(1).replace(".", ",") + " MB" : Math.round(b / 1e3) + " KB";
 
 function debounce(fn, ms) {
   let t;
@@ -541,6 +543,15 @@ async function viewSettings() {
         <label>Kopierte Adresse <input type="text" id="d-url" placeholder="http://127.0.0.1:8765/?state=…&code=…" autocomplete="off"></label>
         <div class="row end"><button class="btn primary" id="d-connect">Verbindung herstellen</button></div>
       </div>`}
+      <div class="card">
+        <h3>Speicherplatz</h3>
+        <p class="small" style="margin:0">${fmtBytes(sys.bytes_stored)} belegt
+          ${sys.bytes_original > sys.bytes_stored ? `– ${fmtBytes(sys.bytes_original - sys.bytes_stored)}
+          (${Math.round((1 - sys.bytes_stored / sys.bytes_original) * 100)} %) durch verlustfreie Kompression gespart` : ""}.
+          ${sys.optimize_pending ? `<br><span class="muted">${sys.optimize_pending} Dokument(e) werden noch im Hintergrund optimiert.</span>` : ""}</p>
+        <p class="small muted" style="margin:6px 0 0">Die Dateien bleiben normale PDF-, Bild- und Office-Dateien;
+          Inhalt und Bildqualität ändern sich nicht.</p>
+      </div>
       <p class="small muted" style="text-align:center">Dokumentenverwaltung ${esc(sys.version)} ·
         Texterkennung ${sys.ocr ? "aktiv" : "nicht verfügbar"} · Verbindung ${esc(location.protocol.replace(":", ""))}</p>
     </div>`;

@@ -5,7 +5,7 @@ FROM ${BUILD_FROM}
 # Texterkennung: Tesseract mit deutschem und englischem Sprachpaket (Open Source, offline)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        python3 python3-venv tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng antiword \
+        python3 python3-venv tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng antiword libjpeg-turbo-progs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -127,7 +127,8 @@ def test_upload_suggest_confirm_and_file_on_disk(client):
     assert filed["file_path"] == "Wohnen/Energie/2026-03-14_Stromabrechnung 2025.pdf"
     assert (client.data_dir / "ablage" / filed["file_path"]).is_file()
     assert "Strom" in filed["tags"]
-    assert client.get("/api/status").json == {"eingang": 0, "abgelegt": 1, "ocr": extract.ocr_available(), "version": "dev"}
+    st = client.get("/api/status").json
+    assert (st["eingang"], st["abgelegt"], st["version"]) == (0, 1, "dev")
     assert client.get(f"/api/documents/{doc['id']}/content").data[:5] == b"%PDF-"
 
 
@@ -438,3 +439,94 @@ def test_drive_run_in_background(client, monkeypatch):
 def test_clientlog(client, caplog):
     assert client.post("/api/clientlog", json={"msg": "Kamera: secure=false"}).status_code == 204
     assert "Kamera: secure=false" in caplog.text
+
+
+# ------------------------------------------------ verlustfreie Kompression
+
+from dms import compress  # noqa: E402
+
+needs_jpegtran = pytest.mark.skipif(not compress.available(), reason="jpegtran nicht installiert")
+
+
+def _decoded(data):
+    from PIL import Image
+    with Image.open(io.BytesIO(data)) as img:
+        return img.mode, img.size, img.tobytes()
+
+
+@needs_jpegtran
+def test_jpeg_lossless():
+    data = make_photo(INVOICE)
+    out = compress.jpeg_lossless(data)
+    assert len(out) < len(data)
+    assert _decoded(out) == _decoded(data)
+
+
+def test_png_and_tiff_lossless():
+    from PIL import Image
+    img = Image.open(io.BytesIO(make_photo(DOCTOR))).convert("RGB")
+    raw_png = io.BytesIO(); img.save(raw_png, "PNG", compress_level=0)
+    out = compress.png_lossless(raw_png.getvalue())
+    assert len(out) < len(raw_png.getvalue()) and _decoded(out) == _decoded(raw_png.getvalue())
+    raw_tif = io.BytesIO(); img.save(raw_tif, "TIFF", save_all=True, append_images=[img.rotate(90, expand=True)])
+    out = compress.tiff_lossless(raw_tif.getvalue())
+    assert len(out) < len(raw_tif.getvalue())
+    assert compress._frames(out) == compress._frames(raw_tif.getvalue())
+
+
+def test_zip_lossless_keeps_contents():
+    import zipfile
+    for data in (make_docx(INSURANCE * 20), make_odt(DOCTOR * 20)):
+        out = compress.zip_lossless(data)
+        assert len(out) < len(data)
+        a, b = zipfile.ZipFile(io.BytesIO(data)), zipfile.ZipFile(io.BytesIO(out))
+        assert [i.filename for i in a.infolist()] == [i.filename for i in b.infolist()]
+        assert all(a.read(n) == b.read(n) for n in a.namelist())
+    odt = zipfile.ZipFile(io.BytesIO(compress.zip_lossless(make_odt(DOCTOR * 20))))
+    first = odt.infolist()[0]
+    assert first.filename == "mimetype" and first.compress_type == zipfile.ZIP_STORED
+
+
+@needs_jpegtran
+def test_pdf_lossless_scan_and_text(tmp_path):
+    from PIL import Image
+    imgs = [Image.open(io.BytesIO(make_photo(INVOICE))), Image.open(io.BytesIO(make_photo(DOCTOR)))]
+    extract.images_to_pdf(imgs, tmp_path / "scan.pdf")
+    scan = (tmp_path / "scan.pdf").read_bytes()
+    for data in (scan, make_pdf(INVOICE * 3)):
+        out = compress.pdf_lossless(data)
+        assert len(out) < len(data)
+        assert compress._pdf_fingerprint(out) == compress._pdf_fingerprint(data)
+
+
+def test_broken_file_is_left_alone(tmp_path):
+    p = tmp_path / "kaputt.pdf"
+    p.write_bytes(b"%PDF-1.4 kaputt")
+    assert compress.optimize_file(p, ".pdf") is None
+    assert p.read_bytes() == b"%PDF-1.4 kaputt"
+
+
+@needs_jpegtran
+def test_import_optimizes_and_keeps_duplicate_check(client):
+    data = make_docx(INSURANCE * 30)
+    doc = upload(client, "police.docx", data)["document"]
+    assert doc["stored_size"] < doc["size"] == len(data)
+    stored = client.get(f"/api/documents/{doc['id']}/content").data
+    import zipfile
+    a, b = zipfile.ZipFile(io.BytesIO(data)), zipfile.ZipFile(io.BytesIO(stored))
+    assert all(a.read(n) == b.read(n) for n in a.namelist())
+    again = upload(client, "nochmal.docx", data)  # gleiche Originaldatei → Duplikat
+    assert again["document_id"] == doc["id"]
+    st = client.get("/api/status").json
+    assert st["bytes_stored"] < st["bytes_original"] and st["optimize_pending"] == 0
+
+
+def test_optimize_existing_documents(client):
+    from dms import db, service
+    doc = upload(client, "police.docx", make_docx(INSURANCE * 30))["document"]
+    conn = db.connect(client.data_dir / "dms.sqlite")
+    conn.execute("UPDATE documents SET stored_size = NULL")
+    conn.commit()
+    service.optimize_existing(client.data_dir / "dms.sqlite", client.data_dir).join(timeout=60)
+    assert conn.execute("SELECT stored_size FROM documents WHERE id = ?", (doc["id"],)).fetchone()[0] is not None
+    conn.close()

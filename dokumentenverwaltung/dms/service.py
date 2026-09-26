@@ -12,21 +12,26 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import logging
 import os
 import re
 import shutil
 import sqlite3
 import tempfile
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 from PIL import Image
 
-from . import analyze, classify, extract
+from . import analyze, classify, compress, extract
 from .textutil import safe_filename
 
 INBOX_DIR = "Eingang"
+# Schützt Dateien vor gleichzeitigem Verschieben (Ablegen) und Ersetzen (Optimieren)
+FILE_LOCK = threading.RLock()
+log = logging.getLogger(__name__)
 
 
 class DmsError(Exception):
@@ -155,7 +160,30 @@ class Store:
         classify.update_df(conn, result.text, +1)
         self._index(doc_id)
         conn.commit()
+        self.optimize(doc_id)
         return self.get(doc_id)
+
+    def optimize(self, doc_id: int) -> tuple[int, int]:
+        """Datei verlustfrei verkleinern. Liefert (vorher, nachher) in Bytes."""
+        row = self._row(doc_id)
+        path = self.files_dir / row["file_path"]
+        if not path.is_file():
+            return 0, 0
+        before = path.stat().st_size
+        out = compress.optimize_file(path, Path(row["original_name"]).suffix)
+        with FILE_LOCK:
+            current = self.conn.execute("SELECT file_path FROM documents WHERE id = ?", (doc_id,)).fetchone()
+            if current is None:
+                return before, before  # inzwischen gelöscht
+            cur_path = self.files_dir / current["file_path"]
+            if out is not None and cur_path == path and path.is_file() and path.stat().st_size == before:
+                compress.replace_file(path, out)
+                after = len(out)
+            else:
+                after = cur_path.stat().st_size if cur_path.is_file() else before
+            self.conn.execute("UPDATE documents SET stored_size = ? WHERE id = ?", (after, doc_id))
+            self.conn.commit()
+        return before, after
 
     # ------------------------------------------------------------- Lesen
 
@@ -218,6 +246,9 @@ class Store:
             "eingang": c.execute("SELECT COUNT(*) FROM documents WHERE status='eingang'").fetchone()[0],
             "abgelegt": c.execute("SELECT COUNT(*) FROM documents WHERE status='abgelegt'").fetchone()[0],
             "ocr": extract.ocr_available(),
+            "bytes_original": c.execute("SELECT COALESCE(SUM(size), 0) FROM documents").fetchone()[0],
+            "bytes_stored": c.execute("SELECT COALESCE(SUM(COALESCE(stored_size, size)), 0) FROM documents").fetchone()[0],
+            "optimize_pending": c.execute("SELECT COUNT(*) FROM documents WHERE stored_size IS NULL").fetchone()[0],
             "version": os.environ.get("DMS_VERSION", "dev"),
         }
 
@@ -276,9 +307,10 @@ class Store:
         self.conn.execute("DELETE FROM documents_fts WHERE rowid = ?", (doc_id,))
         self.conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
         self.conn.execute("DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM document_tags)")
-        self.conn.commit()
-        path = self.files_dir / row["file_path"]
-        path.unlink(missing_ok=True)
+        with FILE_LOCK:
+            self.conn.commit()
+            path = self.files_dir / row["file_path"]
+            path.unlink(missing_ok=True)
         (self.preview_dir / f"{doc_id}.jpg").unlink(missing_ok=True)
         self._prune_dirs(path.parent)
 
@@ -348,6 +380,10 @@ class Store:
 
     def _place_file(self, doc_id: int) -> None:
         """Verschiebt die Datei an ihren Platz: <Ordner>/<Datum>_<Titel>.<Endung>."""
+        with FILE_LOCK:
+            self._place_file_locked(doc_id)
+
+    def _place_file_locked(self, doc_id: int) -> None:
         row = self._row(doc_id)
         if row["status"] != "abgelegt" or not row["folder_id"]:
             return
@@ -478,3 +514,30 @@ def _fts_query(q: str) -> str:
     """Macht aus einer Suchanfrage eine sichere FTS5-Abfrage mit Präfixsuche."""
     words = re.findall(r"[^\W_]+", q or "", re.UNICODE)
     return " AND ".join(f'"{w}"*' for w in words)
+
+
+def optimize_existing(db_path: Path, data_dir: Path) -> threading.Thread:
+    """Einmalig im Hintergrund: bereits vorhandene Dokumente verlustfrei optimieren."""
+    from . import db
+
+    def work():
+        store = Store(db.connect(db_path), data_dir)
+        total_before = total_after = 0
+        try:
+            ids = [r[0] for r in store.conn.execute("SELECT id FROM documents WHERE stored_size IS NULL ORDER BY id")]
+            for doc_id in ids:
+                try:
+                    b, a = store.optimize(doc_id)
+                    total_before += b
+                    total_after += a
+                except Exception:
+                    log.exception("Optimierung von Dokument %s fehlgeschlagen", doc_id)
+            if ids:
+                log.info("Verlustfrei optimiert: %d Dokumente, %.1f MB → %.1f MB",
+                         len(ids), total_before / 1e6, total_after / 1e6)
+        finally:
+            store.conn.close()
+
+    t = threading.Thread(target=work, name="optimize-existing", daemon=True)
+    t.start()
+    return t

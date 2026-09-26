@@ -53,6 +53,15 @@ nicht unterstützte Dateien bleiben liegen und werden in den Einstellungen gemel
 Beim Umschalten von `ablage_im_share` werden vorhandene Daten **nicht** automatisch
 verschoben. Stelle das am besten vor dem ersten Dokument ein.
 
+## Verlustfreie Kompression
+
+Alle Dokumente werden automatisch verlustfrei verkleinert: PDF-Datenströme werden stärker
+komprimiert, Fotos und Scans (auch in PDFs) mit `jpegtran` verlustfrei neu kodiert,
+Office-Dateien mit höchster Stufe neu gepackt. Die Dateien bleiben normale PDF-, Bild- und
+Office-Dateien – Inhalt und Bildqualität ändern sich nicht. Jede optimierte Datei wird vor
+dem Ersetzen geprüft (identische Bildpunkte, identischer Text); schlägt das fehl, bleibt das
+Original. Die Ersparnis steht unter ⚙ Einstellungen → Speicherplatz.
+
 ## Wo liegen die Daten?
 
 Auf dem Raspberry Pi, nirgendwo sonst:

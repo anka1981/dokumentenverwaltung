@@ -56,5 +56,6 @@ jobs:
         run: |
           IMG=ghcr.io/${{ github.repository_owner }}/${{ matrix.arch }}-dokumentenverwaltung:${{ steps.version.outputs.version }}
           docker run --rm --platform ${{ matrix.platform }} --entrypoint "" "$IMG" tesseract --list-langs
+          docker run --rm --platform ${{ matrix.platform }} --entrypoint "" "$IMG" sh -c "command -v jpegtran && /opt/venv/bin/python -c 'import pikepdf; print(pikepdf.__version__)'"
           docker run --rm --platform ${{ matrix.platform }} --entrypoint "" "$IMG" \
             /opt/venv/bin/python -c "import sys; sys.path.insert(0, '/app'); from dms import create_app, extract; create_app('/tmp/d'); assert extract.ocr_available(); print('ok')"

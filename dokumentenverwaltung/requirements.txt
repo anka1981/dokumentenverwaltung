@@ -3,5 +3,6 @@ pypdf>=4.0
 pypdfium2>=4.0
 pytesseract>=0.3.10
 pillow>=10.0
+pikepdf>=9.0
 # optional: HEIC-Fotos von iPhones
 # pillow-heif>=0.16

@@ -1,5 +1,13 @@
 # Änderungen
 
+## 1.2.0
+
+- **Verlustfreie Kompression:** Neue Dokumente werden beim Import verkleinert, vorhandene
+  einmalig im Hintergrund. PDFs (auch eingebettete Scans), JPEG, PNG, TIFF und
+  Office-Dateien bleiben normale Dateien; jede Fassung wird vor dem Ersetzen auf
+  identische Bildpunkte, identischen Text und gleiche Seitenzahl geprüft.
+- Speicherplatz und Ersparnis in den Einstellungen ⚙.
+
 ## 1.1.3
 
 - Abruf aus Google Drive läuft im Hintergrund; die Oberfläche bleibt bedienbar, auch

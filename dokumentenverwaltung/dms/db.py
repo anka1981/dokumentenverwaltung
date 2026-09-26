@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS documents (
     original_name   TEXT NOT NULL,
     file_path       TEXT NOT NULL,           -- relativ zum Ablageverzeichnis
     sha256          TEXT NOT NULL UNIQUE,
-    size            INTEGER NOT NULL,
+    size            INTEGER NOT NULL,        -- Größe beim Import
+    stored_size     INTEGER,                 -- Größe nach verlustfreier Optimierung
     source          TEXT NOT NULL,           -- upload | scan | drive
     status          TEXT NOT NULL DEFAULT 'eingang',  -- eingang | abgelegt
     folder_id       INTEGER REFERENCES folders(id) ON DELETE SET NULL,
@@ -121,6 +122,10 @@ def connect(path: Path) -> sqlite3.Connection:
 
 def init(conn: sqlite3.Connection, seed: bool = True) -> None:
     conn.executescript(SCHEMA)
+    # Spalten, die spätere Versionen ergänzt haben
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(documents)")}
+    if "stored_size" not in cols:
+        conn.execute("ALTER TABLE documents ADD COLUMN stored_size INTEGER")
     if seed and conn.execute("SELECT COUNT(*) FROM folders").fetchone()[0] == 0:
         _seed(conn, DEFAULT_STRUCTURE, None)
     conn.commit()
