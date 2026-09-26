@@ -96,6 +96,10 @@ def test_analyze_dates_and_amounts():
     assert analyze.detect_amount("Position 12,00 €\nPosition 3,50 €\nGesamtsumme 15,50 €") == 15.5
     assert analyze.detect_amount("Kosten: EUR 1.200,00 und 20,00 EUR") == 1200.0
     assert analyze.detect_iban("IBAN DE89 3704 0044 0532 0130 01") is None  # Prüfziffer falsch
+    # OCR-Text: IBAN-ähnliche Zeichen über einen Zeilenumbruch dürfen nicht abstürzen
+    assert analyze.detect_iban("DE12 3456\n7890 1234 5678 90") is None
+    assert analyze.detect_iban("Konto:\nDE89 3704 0044 0532 0130 00\nBIC") == "DE89 3704 0044 0532 0130 00"
+    assert analyze.analyze("AB12\nCDEF GHIJ KLMN\nOPQR", "x", {}, 0, []).iban is None
 
 
 def test_known_correspondent_wins():
@@ -365,3 +369,37 @@ def test_drive_revoked_access(client, monkeypatch):
     r = client.post("/api/drive/run").json
     assert "neu verbinden" in r["errors"][0]
     assert client.get("/api/drive").json["connected"] is False
+
+
+def test_drive_import_survives_broken_file(client, monkeypatch):
+    fake = FakeGoogle([
+        {"id": "1", "name": "gut.pdf", "mimeType": "application/pdf", "data": make_pdf(INVOICE)},
+        {"id": "2", "name": "kaputt.pdf", "mimeType": "application/pdf", "data": make_pdf(DOCTOR)},
+    ])
+    monkeypatch.setattr(gdrive, "http", fake)
+    from dms import db, service
+    conn = db.connect(client.data_dir / "dms.sqlite")
+    gdrive.put(conn, client_id="c", client_secret="s", refresh_token="r")
+    conn.close()
+    original = service.Store._ingest_one
+
+    def flaky(self, filename, data, source):
+        if filename == "kaputt.pdf":
+            raise RuntimeError("Tesseract abgestürzt")
+        return original(self, filename, data, source)
+    monkeypatch.setattr(service.Store, "_ingest_one", flaky)
+
+    res = client.post("/api/drive/run")
+    assert res.status_code == 200
+    assert res.json["imported"] == 1
+    assert "kaputt.pdf: Tesseract abgestürzt" in res.json["errors"]
+    assert fake.files["2"]["parents"] == ["inbox"]  # bleibt für den nächsten Versuch liegen
+
+
+def test_unexpected_error_is_json(client, monkeypatch):
+    from dms import service
+    monkeypatch.setattr(service.Store, "stats", lambda self: 1 / 0)
+    res = client.get("/api/status")
+    assert res.status_code == 500
+    assert "ZeroDivisionError" in res.json["error"]
+    assert client.get("/api/gibtsnicht").status_code == 404

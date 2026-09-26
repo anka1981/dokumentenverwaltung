@@ -653,6 +653,7 @@ async function addScanFiles(files) {
 $("#btn-scan").addEventListener("click", () => {
   scanPages.splice(0).forEach(p => URL.revokeObjectURL(p.url));
   $("#scan-title").value = "";
+  cameraProblem("");
   renderScanPages();
   $("#scan-dialog").showModal();
   if (window.ocrAvailable === false) toast("Hinweis: Auf dem Server ist keine Texterkennung (Tesseract) installiert.", true);
@@ -679,9 +680,24 @@ $("#scan-upload").addEventListener("click", async () => {
 let cameraStream = null;
 let cameraShots = 0;
 
+function cameraProblem(text) {
+  const box = $("#camera-problem");
+  box.innerHTML = text ? `📷 ${text}<br><span class="small">Stattdessen kannst du mit „Aus Galerie“ vorhandene Fotos
+    wählen oder mit der Google-Drive-App scannen.</span>` : "";
+  box.hidden = !text;
+}
+
 async function openCamera() {
+  cameraProblem("");
+  if (!window.isSecureContext) {
+    cameraProblem(`Die Kamera geht nur über eine verschlüsselte Verbindung (https). Du bist über
+      <b>${esc(location.origin)}</b> verbunden. In der Home-Assistant-App unter <b>Einstellungen → Companion-App →
+      Server</b> die interne Adresse entfernen oder auf https://frieda130.site ändern – oder die Seite in Chrome
+      über https://frieda130.site öffnen.`);
+    return;
+  }
   if (!navigator.mediaDevices?.getUserMedia) {
-    $("#camera-input").click(); // z. B. unverschlüsselte Verbindung
+    cameraProblem("Diese App bzw. dieser Browser unterstützt keinen Kamerazugriff aus Webseiten. Bitte in Chrome über https://frieda130.site öffnen.");
     return;
   }
   try {
@@ -690,10 +706,12 @@ async function openCamera() {
       video: { facingMode: { ideal: "environment" }, width: { ideal: 4096 }, height: { ideal: 4096 } },
     });
   } catch (e) {
-    toast(e.name === "NotAllowedError"
-      ? "Kein Kamerazugriff erlaubt. Bitte in den App-/Browser-Einstellungen die Kamera freigeben – ersatzweise öffnet sich die Fotoauswahl."
-      : "Kamera nicht verfügbar – es öffnet sich die Fotoauswahl.", true);
-    $("#camera-input").click();
+    const reasons = {
+      NotAllowedError: "Der Kamerazugriff wurde verweigert. Bitte in den Android-Einstellungen der App (bzw. des Browsers) unter <b>Berechtigungen → Kamera</b> „Zulassen“ wählen und es erneut versuchen.",
+      NotFoundError: "Es wurde keine Kamera gefunden.",
+      NotReadableError: "Die Kamera wird gerade von einer anderen App benutzt.",
+    };
+    cameraProblem((reasons[e.name] || "Die Kamera konnte nicht gestartet werden.") + ` <span class="small">(${esc(e.name)}: ${esc(e.message)})</span>`);
     return;
   }
   cameraShots = 0;

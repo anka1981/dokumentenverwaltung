@@ -69,6 +69,14 @@ def create_app(data_dir: str | Path | None = None, password: str | None = None,
     def drive_error(exc):
         return jsonify({"error": str(exc)}), 400
 
+    @app.errorhandler(Exception)
+    def unexpected(exc):
+        from werkzeug.exceptions import HTTPException
+        if isinstance(exc, HTTPException):
+            return exc
+        app.logger.exception("Unerwarteter Fehler bei %s %s", request.method, request.path)
+        return jsonify({"error": f"Interner Fehler ({type(exc).__name__}: {exc}) – Details im Add-on-Protokoll"}), 500
+
     @app.errorhandler(413)
     def too_large(_exc):
         return jsonify({"error": "Datei zu groß (max. 200 MB)"}), 413

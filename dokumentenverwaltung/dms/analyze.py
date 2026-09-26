@@ -51,7 +51,8 @@ _TOTAL_WORDS = re.compile(
     r"(gesamtbetrag|rechnungsbetrag|endbetrag|gesamtsumme|zu zahlen|zahlbetrag|summe|gesamt|betrag)",
     re.I,
 )
-_IBAN = re.compile(r"\b([A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){3,7}(?:\s?[A-Z0-9]{1,3})?)\b")
+# Nur Leerzeichen innerhalb der IBAN – keine Zeilenumbrüche (OCR-Text)
+_IBAN = re.compile(r"\b([A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,3})?)\b")
 
 
 @dataclass
@@ -199,6 +200,8 @@ def detect_amount(text: str) -> float | None:
 
 
 def _iban_ok(iban: str) -> bool:
+    if not iban.isascii() or not iban.isalnum():
+        return False
     s = iban[4:] + iban[:4]
     digits = "".join(str(int(c, 36)) for c in s)
     return int(digits) % 97 == 1
@@ -206,7 +209,7 @@ def _iban_ok(iban: str) -> bool:
 
 def detect_iban(text: str) -> str | None:
     for m in _IBAN.finditer(text.upper()):
-        iban = m.group(1).replace(" ", "")
+        iban = re.sub(r"\s", "", m.group(1))
         if 15 <= len(iban) <= 34 and _iban_ok(iban):
             return " ".join(iban[i:i + 4] for i in range(0, len(iban), 4))
     return None

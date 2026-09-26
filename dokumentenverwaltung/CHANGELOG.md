@@ -1,5 +1,15 @@
 # Änderungen
 
+## 1.1.1
+
+- Absturz beim Import behoben, wenn im erkannten Text IBAN-ähnliche Zeichen über einen
+  Zeilenumbruch gehen („Error 500“ beim Abruf aus Google Drive).
+- Eine fehlerhafte Datei bricht den Google-Drive-Abruf nicht mehr ab; Fehler werden als
+  verständliche Meldung angezeigt statt „Error 500“.
+- Kamera: Kann sie nicht starten, steht der Grund jetzt im Scan-Fenster (z. B.
+  unverschlüsselte Verbindung oder fehlende Kamera-Berechtigung), statt still die
+  Fotoauswahl zu öffnen.
+
 ## 1.1.0
 
 - **Kamera direkt in der Seite:** „Seite fotografieren“ öffnet jetzt die Kamera auch in der

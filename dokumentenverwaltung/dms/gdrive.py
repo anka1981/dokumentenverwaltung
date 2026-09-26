@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import secrets
 import sqlite3
 import threading
@@ -44,6 +45,7 @@ EXPORTS = {
 }
 
 _run_lock = threading.Lock()
+log = logging.getLogger(__name__)
 
 
 class DriveError(Exception):
@@ -139,6 +141,8 @@ def http(method: str, url: str, *, params=None, form=None, body=None, token=None
         raise DriveError(f"Google antwortet mit Fehler {exc.code}: {detail}") from None
     except urllib.error.URLError as exc:
         raise DriveError(f"Google nicht erreichbar: {exc.reason}") from None
+    except OSError as exc:  # Zeitüberschreitung, Verbindungsabbruch, TLS
+        raise DriveError(f"Verbindung zu Google unterbrochen: {exc}") from None
 
 
 def _json(method, url, **kw) -> dict:
@@ -287,10 +291,12 @@ def run_import(store) -> dict:
         for f in _files(token, folder_id):
             try:
                 name, data = _download(token, f)
-            except DriveError as exc:
-                result["errors"].append(str(exc))
+                outcome = store.ingest_files([Upload(name, data)], source="drive")[0]
+            except Exception as exc:  # eine defekte Datei darf den Abruf nicht abbrechen
+                store.conn.rollback()
+                log.exception("Import von %s fehlgeschlagen", f.get("name"))
+                result["errors"].append(f"{f.get('name')}: {exc}")
                 continue
-            outcome = store.ingest_files([Upload(name, data)], source="drive")[0]
             if "document" in outcome:
                 result["imported"] += 1
                 result["documents"].append(outcome["document"]["id"])
@@ -304,6 +310,9 @@ def run_import(store) -> dict:
                  params={"addParents": done_id, "removeParents": folder_id, "fields": "id"})
     except DriveError as exc:
         result["errors"].append(str(exc))
+    except Exception as exc:
+        log.exception("Google-Drive-Abruf fehlgeschlagen")
+        result["errors"].append(f"Unerwarteter Fehler: {type(exc).__name__}: {exc}")
     finally:
         put(conn, last_run=datetime.now().isoformat(timespec="seconds"),
             last_result=json.dumps(result, ensure_ascii=False))
