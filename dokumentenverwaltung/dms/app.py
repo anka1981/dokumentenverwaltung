@@ -106,6 +106,16 @@ def create_app(data_dir: str | Path | None = None, password: str | None = None,
         return res
 
     @app.after_request
+    def log_page_requests(res):
+        # Diagnose: Wer lädt die Oberfläche (HA-App oder Browser) und in welcher Version?
+        if request.path == "/" or request.path.startswith("/static/app.js"):
+            ua = request.headers.get("User-Agent", "")
+            client = "HA-App" if "Home Assistant" in ua or "HomeAssistant" in ua else "Browser"
+            app.logger.warning("Seitenabruf %s %s → %s (%s, %s) %s", request.path, request.query_string.decode()[:30],
+                               res.status_code, client, request.headers.get("X-Ingress-Path", "ohne Ingress"), ua[:160])
+        return res
+
+    @app.after_request
     def no_cache_api(res):
         if request.path.startswith("/api/") and "Cache-Control" not in res.headers:
             res.headers["Cache-Control"] = "no-store"

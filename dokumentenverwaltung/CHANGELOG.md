@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.2.1
+
+- Diagnose: Jeder Aufruf der Oberfläche wird mit aufrufender App (HA-App/Browser)
+  protokolliert, um Probleme in der Home-Assistant-App einzugrenzen.
+
 ## 1.2.0
 
 - **Verlustfreie Kompression:** Neue Dokumente werden beim Import verkleinert, vorhandene
