@@ -25,7 +25,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from . import analyze, classify, compress, extract
+from . import analyze, classify, compress, extract, structure
 from .textutil import safe_filename
 
 INBOX_DIR = "Eingang"
@@ -482,6 +482,56 @@ class Store:
             raise DmsError("Ordner enthält Dokumente")
         self.conn.execute("DELETE FROM folders WHERE id = ?", (folder_id,))
         self.conn.commit()
+
+    def apply_structure(self, text: str, remove_empty: bool = False, dry_run: bool = True) -> dict:
+        """Ordnerstruktur aus eingerückter Liste anlegen (nichts mit Dokumenten wird gelöscht)."""
+        try:
+            tree = structure.parse_outline(text)
+        except structure.OutlineError as exc:
+            raise DmsError(str(exc))
+        rows = list(self.conn.execute("SELECT id, parent_id, name FROM folders"))
+        by_key = {(r["parent_id"], r["name"].lower()): r["id"] for r in rows}
+        paths = classify.folder_paths(self.conn)
+        wanted = {tuple(n.lower() for n in p) for p in structure.flatten(tree)}
+        result = {"create": [], "exists": [], "remove": [], "keep_nonempty": []}
+
+        def walk(nodes, parent_id, prefix):
+            for node in nodes:
+                path = prefix + (node["name"],)
+                fid = by_key.get((parent_id, node["name"].lower()))
+                if fid is None:
+                    kw = structure.suggest_keywords(node["name"])
+                    result["create"].append({"path": " / ".join(path), "keywords": kw})
+                    if not dry_run:
+                        fid = self.create_folder(node["name"], parent_id, kw)["id"]
+                        by_key[(parent_id, node["name"].lower())] = fid
+                else:
+                    result["exists"].append(" / ".join(path))
+                if fid is not None or dry_run:
+                    walk(node["children"], fid, path)
+        walk(tree, None, ())
+
+        # Bisherige Ordner, die nicht in der Liste stehen
+        def key_path(fid):
+            return tuple(part.lower() for part in paths[fid].split(" / "))
+        others = [r["id"] for r in rows if key_path(r["id"]) not in wanted]
+        others.sort(key=lambda fid: -len(key_path(fid)))  # tiefste zuerst
+        for fid in others:
+            ids = self._subtree(fid)
+            docs = self.conn.execute(
+                f"SELECT COUNT(*) FROM documents WHERE folder_id IN ({','.join('?' * len(ids))})", ids).fetchone()[0]
+            if docs:
+                result["keep_nonempty"].append({"path": paths[fid], "documents": docs})
+            elif remove_empty:
+                result["remove"].append(paths[fid])
+                if not dry_run:
+                    for sub in sorted(ids, key=lambda i: -len(key_path(i))):
+                        if self.conn.execute("SELECT 1 FROM folders WHERE id = ?", (sub,)).fetchone():
+                            self.conn.execute("DELETE FROM folders WHERE id = ?", (sub,))
+        if not dry_run:
+            self.conn.commit()
+        result["dry_run"] = dry_run
+        return result
 
     def _folder(self, folder_id: int) -> dict:
         r = self.conn.execute("SELECT id, parent_id, name, keywords FROM folders WHERE id = ?", (folder_id,)).fetchone()

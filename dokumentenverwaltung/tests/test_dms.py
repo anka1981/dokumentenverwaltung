@@ -541,3 +541,229 @@ def test_entry_prefix_for_home_assistant(client):
     assert client.get("/app/api/status").json["eingang"] == 0
     assert client.get("/app").status_code == 301
     assert client.get("/api/status").status_code == 200  # ohne Präfix weiterhin
+
+
+# ------------------------------------------------ Übernahme nach Paperless
+
+from dms import paperless  # noqa: E402
+
+
+class FakePaperless:
+    def __init__(self, version="2.14.7"):
+        self.version = version
+        self.v3 = version.startswith("3")
+        self.objects = {k: {} for k in ("storage_paths", "document_types", "correspondents", "tags")}
+        self.documents, self.tasks, self.notes, self.bulk = {}, {}, {}, []
+        self.hashes = set()
+
+    def __call__(self, method, url, *, token, params=None, body=None, files=None, fields=None):
+        import hashlib as _h, json as _json
+        assert token == "tok-geheim-123"
+        path = url.split("/api/", 1)[1]
+        hdr = {"X-Version": self.version}
+        out = lambda obj: (200, hdr, _json.dumps(obj).encode())
+        kind = path.rstrip("/").split("/")[0]
+        if method == "GET" and path == "documents/":
+            return out({"count": len(self.documents), "results": []})
+        if kind in self.objects and method == "GET":
+            name = params["name__iexact"].lower()
+            return out({"results": [o for o in self.objects[kind].values() if o["name"].lower() == name]})
+        if kind in self.objects and method == "POST":
+            oid = len(self.objects[kind]) + 1
+            self.objects[kind][oid] = {"id": oid, **body}
+            return out(self.objects[kind][oid])
+        if path == "documents/post_document/":
+            if files["document"][0].endswith(".odt") and self.v3:
+                raise paperless.PaperlessError('Paperless antwortet mit Fehler 400: {"document":["File type '
+                                               'application/vnd.oasis.opendocument.text not supported"]}')
+            data = files["document"][1]
+            tid = f"task-{len(self.tasks) + 1}"
+            h = _h.md5(data).hexdigest()
+            if h in self.hashes:
+                self.tasks[tid] = ({"status": "failure", "result_data": {"error": "It is a duplicate of y"}}
+                                   if self.v3 else {"status": "FAILURE", "result": "Not consuming x: It is a duplicate of y"})
+            else:
+                self.hashes.add(h)
+                did = len(self.documents) + 1
+                f = {}
+                for k, v in fields:
+                    f.setdefault(k, []).append(v)
+                self.documents[did] = {"name": files["document"][0], **f}
+                self.tasks[tid] = ({"status": "success", "related_document_ids": [did], "result_data": {"document_id": did}}
+                                   if self.v3 else {"status": "SUCCESS", "related_document": str(did)})
+            return out(tid)
+        if path == "tasks/":
+            task = self.tasks[params["task_id"]]
+            return out({"count": 1, "results": [task]} if self.v3 else [task])
+        if path.endswith("/notes/"):
+            self.notes[int(path.split("/")[1])] = body["note"]
+            return out([])
+        if path == "documents/bulk_edit/":
+            self.bulk.append(body)
+            return out({"result": "OK"})
+        raise AssertionError((method, path))
+
+
+def test_keyword_regex_matches_compounds_and_umlauts():
+    import re
+    rx = paperless.keyword_regex(["versicherung", "zählerstand", "kfz-steuer", "steuer id"])
+    for text in ("Haftpflichtversicherung", "Zaehlerstand", "KFZ-Steuer", "Kfz Steuer", "Steuer ID"):
+        assert re.search(rx, text, re.I), text
+    assert not re.search(rx, "Rechnung", re.I)
+    assert paperless.path_template("Wohnen / Energie", True) == \
+        "Wohnen/Energie/{{ created_year }}-{{ created_month }}-{{ created_day }}_{{ title }}"
+    assert "{created_year}" in paperless.path_template("Wohnen / Energie", paperless.uses_jinja("2.8.1"))
+
+
+@pytest.mark.parametrize("version", ["2.14.7", "3.2.1"])
+def test_migrate_to_paperless(client, monkeypatch, version):
+    fake = FakePaperless(version)
+    monkeypatch.setattr(paperless, "http", fake)
+    monkeypatch.setattr(paperless, "POLL_INTERVAL", 0)
+    filed = upload(client, "strom.pdf", make_pdf(INVOICE))["document"]
+    client.post(f"/api/documents/{filed['id']}/file", json={
+        "folder_id": filed["suggestion"][0]["folder_id"], "notes": "Zählernummer 42", "tags": ["Strom", "Rechnung"]})
+    inbox = upload(client, "arzt.odt", make_odt(DOCTOR))["document"]
+
+    assert client.post("/api/paperless/test").status_code == 400  # noch keine Zugangsdaten
+    assert client.put("/api/paperless", json={"url": "paperless:8000"}).status_code == 400
+    client.put("/api/paperless", json={"url": "http://192.168.1.5:8000/api/", "token": "tok-geheim-123"})
+    st = client.get("/api/paperless").json
+    assert st["url"] == "http://192.168.1.5:8000" and st["has_token"] and "geheim" not in str(st)
+    assert client.post("/api/paperless/test").json["version"] == version
+
+    res = client.post("/api/paperless/migrate?wait=1", json={"include_inbox": True}).json
+    assert res["phase"] == "Fertig" and res["done"] == 2 and not res["errors"], res
+
+    sp = {o["name"]: o for o in fake.objects["storage_paths"].values()}
+    assert sp["Wohnen / Energie"]["path"].startswith("Wohnen/Energie/{{ created_year }}")
+    assert sp["Wohnen / Energie"]["matching_algorithm"] == paperless.MATCH_REGEX
+    assert sp["Sonstiges"]["matching_algorithm"] == paperless.MATCH_NONE
+    doc_filed = next(d for d in fake.documents.values() if d["name"] == "strom.pdf")
+    energie_id = sp["Wohnen / Energie"]["id"]
+    assert doc_filed["storage_path"] == [energie_id]
+    assert doc_filed["title"] == [filed["title"]] and doc_filed["created"] == ["2026-03-14"]
+    tag_ids = {o["name"]: o["id"] for o in fake.objects["tags"].values()}
+    assert set(doc_filed["tags"]) >= {tag_ids["Strom"], tag_ids["Rechnung"]}
+    odt_name = "arzt.pdf" if fake.v3 else "arzt.odt"  # 3.x-Fake ohne Tika: Textfassung als PDF
+    doc_inbox = next(d for d in fake.documents.values() if d["name"] == odt_name)
+    if fake.v3:
+        assert "Textfassung" in fake.notes[2]
+    assert "storage_path" not in doc_inbox  # unbestätigt: Paperless schlägt per Regel vor
+    note = fake.notes[1]
+    assert "Zählernummer 42" in note and "Betrag: 1.234,56 €" in note and "IBAN: DE89" in note
+    inbox_tag = next(o for o in fake.objects["tags"].values() if o["name"] == "Posteingang")
+    assert inbox_tag["is_inbox_tag"] and fake.bulk[0]["documents"] == [2]
+
+    # Erneuter Lauf: nichts doppelt
+    again = client.post("/api/paperless/migrate?wait=1", json={}).json
+    assert again["total"] == 0 and len(fake.documents) == 2
+    assert client.get("/api/paperless").json["transferred"] == 2
+
+
+@pytest.mark.parametrize("version", ["2.8.0", "3.2.1"])
+def test_migrate_reports_duplicates_and_errors(client, monkeypatch, version):
+    fake = FakePaperless(version=version)
+    monkeypatch.setattr(paperless, "http", fake)
+    monkeypatch.setattr(paperless, "POLL_INTERVAL", 0)
+    doc = upload(client, "arzt.pdf", make_pdf(DOCTOR))["document"]
+    fake.hashes.add(__import__("hashlib").md5((client.data_dir / "ablage" / doc["file_path"]).read_bytes()).hexdigest())
+    client.put("/api/paperless", json={"url": "http://p:8000", "token": "tok-geheim-123"})
+    res = client.post("/api/paperless/migrate?wait=1", json={}).json
+    assert res["skipped"] == 1 and res["done"] == 0 and not res["errors"]
+    template = next(iter(fake.objects["storage_paths"].values()))["path"]
+    assert ("{created_year}" in template) == (version == "2.8.0")
+
+    def down(*a, **kw):
+        raise paperless.PaperlessError("Paperless nicht erreichbar (Connection refused). Stimmt die Adresse mit Port?")
+    monkeypatch.setattr(paperless, "http", down)
+    res = client.post("/api/paperless/migrate?wait=1", json={}).json
+    assert res["phase"] == "Abgebrochen" and "nicht erreichbar" in res["errors"][0]
+
+
+# ------------------------------------------------ Ordnerstruktur aus Liste
+
+OUTLINE = """
+* Rechnungen
+* Wohnung
+   * Musterstraße 12
+   * Am Beispielweg 3
+* Garten
+* Pflanzen
+* Arbeit
+   * Beispiel GmbH
+      * Gehalt
+      * Verträge
+* Versicherung
+   * Krankenversicherung
+      * AU
+   * Rente
+   * Hausrat
+* Pflanzen
+   * Pflanzenpass
+* Persönliche Dokumente
+* Erbschaft
+   * Vater
+   * Tante Erna
+"""
+
+
+def test_parse_outline_merges_duplicates():
+    from dms import structure
+    tree = structure.parse_outline(OUTLINE)
+    names = [n["name"] for n in tree]
+    assert names.count("Pflanzen") == 1
+    pflanzen = next(n for n in tree if n["name"] == "Pflanzen")
+    assert [c["name"] for c in pflanzen["children"]] == ["Pflanzenpass"]
+    paths = structure.flatten(tree)
+    assert ("Arbeit", "Beispiel GmbH", "Gehalt") in paths
+    assert ("Versicherung", "Krankenversicherung", "AU") in paths
+    assert structure.parse_outline("\tA\n\t\tB\n- C\n1. D")[0]["children"][0]["name"] == "B"
+    assert "krankenkasse" in structure.suggest_keywords("Krankenversicherung")
+    assert "arbeitsvertrag" in structure.suggest_keywords("Verträge")
+    assert structure.suggest_keywords("Musterstraße 12") == "musterstraße 12"
+    assert structure.suggest_keywords("Vater") == ""
+    with pytest.raises(structure.OutlineError):
+        structure.parse_outline("* A/B")
+
+
+def test_apply_structure(client):
+    # Ein Dokument in einem Standardordner, der nicht in der Liste steht
+    doc = upload(client, "arzt.odt", make_odt(DOCTOR))["document"]
+    client.post(f"/api/documents/{doc['id']}/file", json={"folder_id": folder_id(client, "Gesundheit")})
+    before = client.get("/api/folders").json
+
+    preview = client.post("/api/folders/structure", json={"text": OUTLINE, "remove_empty": True}).json
+    assert preview["dry_run"] and client.get("/api/folders").json == before  # Vorschau ändert nichts
+    created = {c["path"]: c["keywords"] for c in preview["create"]}
+    assert "Versicherung / Krankenversicherung / AU" in created
+    assert "Arbeit / Beispiel GmbH / Gehalt" in created
+    assert "Arbeit" in preview["exists"]  # Standardordner gleichen Namens bleibt
+    assert {"path": "Gesundheit", "documents": 1} in preview["keep_nonempty"]
+    assert "Fahrzeuge" in preview["remove"] and "Arbeit / Gehaltsabrechnungen" in preview["remove"]
+
+    res = client.post("/api/folders/structure", json={"text": OUTLINE, "remove_empty": True, "dry_run": False}).json
+    assert not res["dry_run"]
+    tree = client.get("/api/folders").json
+    top = sorted(n["name"] for n in tree)
+    assert top == sorted(["Rechnungen", "Wohnung", "Garten", "Pflanzen", "Arbeit", "Versicherung",
+                          "Persönliche Dokumente", "Erbschaft", "Gesundheit"])
+    au = folder_id(client, "Versicherung / Krankenversicherung / AU")
+    assert client.get(f"/api/documents/{doc['id']}").json["folder_path"] == "Gesundheit"
+
+    # Neue Ordner werden vorgeschlagen
+    au_doc = upload(client, "au.txt", "Arbeitsunfähigkeitsbescheinigung zur Vorlage beim Arbeitgeber".encode())["document"]
+    assert au_doc["suggestion"][0]["folder_id"] == au
+
+    again = client.post("/api/folders/structure", json={"text": OUTLINE, "dry_run": False}).json
+    assert again["create"] == []  # nichts doppelt
+
+
+def test_text_pdf_is_readable():
+    import pypdf
+    long = "\n".join(f"Zeile {i}: Größe, Maße & (Klammern) äöüß" for i in range(150))
+    pdf = paperless.text_pdf("Arztbrief", long)
+    reader = pypdf.PdfReader(io.BytesIO(pdf))
+    assert len(reader.pages) == 3
+    text = "".join(p.extract_text() for p in reader.pages)
+    assert "Arztbrief" in text and "Zeile 149" in text and "(Klammern) äöüß" in text

@@ -43,6 +43,42 @@ Abgeholt wird alle 10 Minuten (einstellbar) oder sofort mit „Aus Google Drive 
 Eingang. Importierte Dateien werden in Drive nach `Dokumente-Eingang/importiert` verschoben;
 nicht unterstützte Dateien bleiben liegen und werden in den Einstellungen gemeldet.
 
+## Eigene Ordnerstruktur
+
+Unter **Ordner → „Ordnerstruktur aus einer Liste übernehmen“** eine eingerückte Liste einfügen,
+z. B.:
+
+```
+* Versicherung
+   * Krankenversicherung
+      * AU
+   * Hausrat
+* Wohnung
+   * Musterstraße 12
+```
+
+**Vorschau** zeigt, was angelegt wird (mit Erkennungsbegriffen), **Übernehmen** legt es an.
+Gleichnamige Einträge werden zusammengeführt. Ordner mit Dokumenten werden nie gelöscht.
+
+## Umzug nach Paperless-ngx
+
+Unter **⚙ Einstellungen → „Nach Paperless-ngx übertragen“**:
+
+1. **Adresse** von Paperless mit Port eintragen, z. B. `http://192.168.178.20:8000`. Das ist der
+   direkte Port des Paperless-Add-ons, nicht die Home-Assistant-Seitenleiste; ggf. im
+   Paperless-Add-on unter „Netzwerk“ freigeben.
+2. **API-Token**: in Paperless oben rechts auf das Profil → „API-Auth-Token“ erzeugen und kopieren.
+3. **Speichern → Verbindung testen → Übertragen.**
+
+Übertragen werden Ordner (als **Speicherpfade** `Ordner/Unterordner/Datum_Titel`, mit den
+Erkennungsbegriffen als Zuordnungsregel), Dokumenttypen, Absender, Schlagwörter und alle
+Dokumente (Betrag, IBAN, Notizen als Notiz). Unbestätigte Dokumente bekommen den Tag
+**Posteingang**. Mit „Nur die Ordnerstruktur übertragen“ werden nur die Speicherpfade angelegt.
+Vorhandenes in Paperless wird nicht verändert, ein erneuter Lauf überträgt nichts doppelt.
+
+Word- und LibreOffice-Dateien nimmt Paperless nur mit **Tika/Gotenberg** an. Ohne diese wird
+eine Textfassung als PDF übertragen (das Original bleibt in der Dokumentenverwaltung).
+
 ## Optionen
 
 | Option | Bedeutung |

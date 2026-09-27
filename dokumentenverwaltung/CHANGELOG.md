@@ -1,5 +1,16 @@
 # Änderungen
 
+## 1.3.0
+
+- **Ordnerstruktur aus einer Liste übernehmen** (Seite „Ordner“): eingerückte Liste einfügen,
+  Vorschau ansehen, übernehmen. Neue Ordner bekommen passende Erkennungsbegriffe; Ordner mit
+  Dokumenten werden nie gelöscht, leere bisherige Ordner auf Wunsch entfernt.
+- **Übertragung nach Paperless-ngx** (⚙ Einstellungen): Ordnerstruktur als Speicherpfade mit
+  Zuordnungsregeln, Dokumenttypen, Absender, Schlagwörter und Dokumente samt Notizen;
+  unbestätigte Dokumente landen im Paperless-Posteingang. Wahlweise nur die Struktur.
+  Getestet mit Paperless-ngx 3.2.1. Word-/LibreOffice-Dateien werden ohne Tika/Gotenberg als
+  Textfassung (PDF) übertragen.
+
 ## 1.2.3
 
 - Eigene Kamerafunktion entfernt – der Scan der Google-Drive-App liefert deutlich bessere

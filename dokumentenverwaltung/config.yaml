@@ -1,5 +1,5 @@
 name: Dokumentenverwaltung
-version: "1.2.3"
+version: "1.3.0"
 slug: dokumentenverwaltung
 description: >-
   Dokumente per Datei oder Google-Drive-Scan einspielen, Text kostenlos erkennen (Tesseract),

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from flask import Flask, Response, g, jsonify, request, send_file, send_from_directory
 
-from . import db, gdrive
+from . import db, gdrive, paperless
 from .service import Conflict, DmsError, Store, Upload
 
 STATIC = Path(__file__).parent / "static"
@@ -85,6 +85,10 @@ def create_app(data_dir: str | Path | None = None, password: str | None = None,
         if isinstance(exc, Conflict) and exc.document_id:
             body["document_id"] = exc.document_id
         return jsonify(body), exc.status
+
+    @app.errorhandler(paperless.PaperlessError)
+    def paperless_error(exc):
+        return jsonify({"error": str(exc)}), 400
 
     @app.errorhandler(gdrive.DriveError)
     def drive_error(exc):
@@ -227,6 +231,31 @@ def create_app(data_dir: str | Path | None = None, password: str | None = None,
         started = gdrive.start_import(db_path, data_dir)
         return jsonify({**gdrive.status(store().conn), "started": started}), 202
 
+    # ------------------------------------------------ Übernahme nach Paperless
+
+    @app.get("/api/paperless")
+    def paperless_status():
+        return jsonify(paperless.status(store().conn))
+
+    @app.put("/api/paperless")
+    def paperless_configure():
+        d = _json()
+        return jsonify(paperless.configure(store().conn, d.get("url"), d.get("token")))
+
+    @app.post("/api/paperless/test")
+    def paperless_test():
+        return jsonify(paperless.test_connection(store().conn))
+
+    @app.post("/api/paperless/migrate")
+    def paperless_migrate():
+        d = _json()
+        include_inbox = bool(d.get("include_inbox", True))
+        include_documents = bool(d.get("include_documents", True))
+        if request.args.get("wait") == "1":
+            return jsonify(paperless.migrate(store(), include_inbox, include_documents))
+        started = paperless.start_migration(db_path, data_dir, include_inbox, include_documents)
+        return jsonify({**paperless.status(store().conn), "started": started}), 202
+
     # Diagnose: Die Seite meldet Fehler und Umgebung (Version, https, Kamera)
     # ins Add-on-Protokoll, damit Probleme auf dem Handy sichtbar werden.
     @app.post("/api/clientlog")
@@ -246,6 +275,12 @@ def create_app(data_dir: str | Path | None = None, password: str | None = None,
     def create_folder():
         d = _json()
         return jsonify(store().create_folder(d.get("name"), d.get("parent_id"), d.get("keywords", ""))), 201
+
+    @app.post("/api/folders/structure")
+    def folder_structure():
+        d = _json()
+        return jsonify(store().apply_structure(d.get("text", ""), bool(d.get("remove_empty")),
+                                               dry_run=bool(d.get("dry_run", True))))
 
     @app.patch("/api/folders/<int:folder_id>")
     def update_folder(folder_id):

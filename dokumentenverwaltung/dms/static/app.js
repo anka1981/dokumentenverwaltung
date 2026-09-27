@@ -453,8 +453,55 @@ async function viewFolders() {
           <button class="btn" id="root-add">Anlegen</button>
         </div>
       </div>
+      <details class="card stack" id="outline-card">
+        <summary><b>Ordnerstruktur aus einer Liste übernehmen</b></summary>
+        <p class="muted small">Eine eingerückte Liste einfügen (z. B. aus Notizen), Unterordner eingerückt:<br>
+          <code>* Versicherung</code><br><code>&nbsp;&nbsp;&nbsp;* Hausrat</code><br>
+          Fehlende Ordner werden mit passenden Erkennungsbegriffen angelegt; vorhandene bleiben unverändert.
+          Ordner mit Dokumenten werden nie gelöscht.</p>
+        <textarea id="outline-text" rows="12" placeholder="* Rechnungen&#10;* Wohnung&#10;   * Musterstraße 1"></textarea>
+        <label class="row" style="color:var(--text)"><input type="checkbox" id="outline-remove">
+          Bisherige Ordner, die nicht in der Liste stehen und leer sind, entfernen</label>
+        <div class="row end">
+          <button class="btn" id="outline-preview">Vorschau</button>
+          <button class="btn primary" id="outline-apply" disabled>Übernehmen</button>
+        </div>
+        <div id="outline-result" class="small"></div>
+      </details>
       <div class="card">${tree.map(node).join("") || '<p class="muted">Noch keine Ordner.</p>'}</div>
     </div>`;
+
+  const outlineReport = r => {
+    const list = (title, items, fmt = x => esc(x)) => items.length
+      ? `<p style="margin:8px 0 2px"><b>${title} (${items.length})</b></p><ul style="margin:0;padding-left:20px">${items.map(i => `<li>${fmt(i)}</li>`).join("")}</ul>` : "";
+    return list(r.dry_run ? "Wird angelegt" : "Angelegt", r.create,
+                c => `${esc(c.path)}${c.keywords ? ` <span class="muted">– ${esc(c.keywords)}</span>` : ""}`)
+      + list("Schon vorhanden", r.exists)
+      + list(r.dry_run ? "Wird entfernt (leer)" : "Entfernt (leer)", r.remove)
+      + list("Bleibt, weil Dokumente darin liegen", r.keep_nonempty, k => `${esc(k.path)} <span class="muted">(${k.documents} Dok.)</span>`)
+      + (r.create.length || r.remove.length ? "" : `<p class="muted">Keine Änderungen nötig.</p>`);
+  };
+  const outlineCall = dry => api("/folders/structure", { method: "POST", json: {
+    text: $("#outline-text").value, remove_empty: $("#outline-remove").checked, dry_run: dry } });
+  $("#outline-preview").addEventListener("click", async () => {
+    try {
+      $("#outline-result").innerHTML = outlineReport(await outlineCall(true));
+      $("#outline-apply").disabled = false;
+    } catch (e) { toast(e.message, true); }
+  });
+  $("#outline-text").addEventListener("input", () => ($("#outline-apply").disabled = true));
+  $("#outline-remove").addEventListener("change", () => ($("#outline-apply").disabled = true));
+  $("#outline-apply").addEventListener("click", async () => {
+    try {
+      const r = await outlineCall(false);
+      folderCache = null;
+      toast(`${r.create.length} Ordner angelegt` + (r.remove.length ? `, ${r.remove.length} entfernt` : ""));
+      await route();
+      const card = $("#outline-card");
+      card.open = true;
+      $("#outline-result").innerHTML = outlineReport(r);
+    } catch (e) { toast(e.message, true); }
+  });
 
   $("#root-add").addEventListener("click", async () => {
     const name = $("#root-name").value.trim();
@@ -494,7 +541,7 @@ async function viewFolders() {
 // ------------------------------------------------------------ Einstellungen
 
 async function viewSettings() {
-  const [st, sys] = await Promise.all([api("/drive"), api("/status")]);
+  const [st, sys, pl] = await Promise.all([api("/drive"), api("/status"), api("/paperless")]);
   const last = st.last_result;
   const lastText = st.last_run
     ? `Letzter Abruf: ${new Date(st.last_run).toLocaleString("de-DE")} – ${last.imported} neu` +
@@ -543,6 +590,23 @@ async function viewSettings() {
         <label>Kopierte Adresse <input type="text" id="d-url" placeholder="http://127.0.0.1:8765/?state=…&code=…" autocomplete="off"></label>
         <div class="row end"><button class="btn primary" id="d-connect">Verbindung herstellen</button></div>
       </div>`}
+      <div class="card stack" id="pl-card">
+        <h3>Nach Paperless-ngx übertragen</h3>
+        <p class="muted small" style="margin:0">Überträgt Ordnerstruktur (als Speicherpfade mit deinen Erkennungsbegriffen),
+          Dokumenttypen, Absender, Schlagwörter und alle Dokumente. Unbestätigte Dokumente landen dort im
+          <b>Posteingang</b>. Mehrfaches Ausführen überträgt nichts doppelt. Die Dokumente bleiben hier erhalten.</p>
+        <label>Adresse von Paperless (mit Port) <input type="text" id="pl-url" value="${esc(pl.url)}" placeholder="http://192.168.178.20:8000" autocomplete="off"></label>
+        <label>API-Token <input type="password" id="pl-token" placeholder="${pl.has_token ? "gespeichert – nur zum Ändern ausfüllen" : "in Paperless: Profil → API-Auth-Token"}" autocomplete="off"></label>
+        <label class="row" style="color:var(--text)"><input type="checkbox" id="pl-structure-only"> Nur die Ordnerstruktur übertragen (ohne Dokumente)</label>
+        <label class="row" style="color:var(--text)"><input type="checkbox" id="pl-inbox" checked> Auch unbestätigte Dokumente aus dem Eingang übertragen</label>
+        <div class="row wrap end">
+          <button class="btn" id="pl-save">Speichern</button>
+          <button class="btn" id="pl-test" ${pl.url && pl.has_token ? "" : "disabled"}>Verbindung testen</button>
+          <button class="btn primary" id="pl-run" ${pl.url && pl.has_token && !pl.running ? "" : "disabled"}>Übertragen</button>
+        </div>
+        <div class="small" id="pl-state"></div>
+      </div>
+
       <div class="card">
         <h3>Speicherplatz</h3>
         <p class="small" style="margin:0">${fmtBytes(sys.bytes_stored)} belegt
@@ -581,6 +645,52 @@ async function viewSettings() {
     } catch (e) { toast(e.message, true); }
   });
   $("#d-run")?.addEventListener("click", async () => { await runDriveImport(); });
+
+  // Paperless-ngx
+  const plState = p => {
+    const s = p.state;
+    const box = $("#pl-state");
+    if (!box) return;
+    if (!s) { box.innerHTML = p.transferred ? `${p.transferred} Dokument(e) bereits übertragen.` : ""; return; }
+    box.innerHTML = `<b>${esc(s.phase)}</b>` + (s.folders ? ` – ${s.folders} Speicherpfade` : "") +
+      (s.total ? `, ${s.done} von ${s.total} Dokumenten übertragen` : "") +
+      (s.skipped ? `, ${s.skipped} waren schon in Paperless` : "") +
+      (s.version ? ` <span class="muted">(Paperless ${esc(s.version)})</span>` : "") +
+      (s.errors.length ? `<br><span style="color:var(--danger)">${s.errors.map(esc).join("<br>")}</span>` : "") +
+      (p.running ? `<br><span class="muted">Läuft im Hintergrund – die Texterkennung in Paperless kann je Dokument etwas dauern.</span>` : "");
+  };
+  plState(pl);
+  const plPoll = async () => {
+    const p = await api("/paperless");
+    if (!$("#pl-state")) return; // Seite verlassen
+    plState(p);
+    $("#pl-run").disabled = p.running;
+    if (p.running) setTimeout(plPoll, 3000);
+  };
+  if (pl.running) setTimeout(plPoll, 3000);
+  $("#pl-save").addEventListener("click", async () => {
+    try {
+      await api("/paperless", { method: "PUT", json: { url: $("#pl-url").value, token: $("#pl-token").value || null } });
+      toast("Gespeichert");
+      route();
+    } catch (e) { toast(e.message, true); }
+  });
+  $("#pl-test").addEventListener("click", async () => {
+    try {
+      const r = await api("/paperless/test", { method: "POST", timeout: 60000 });
+      toast(`Verbindung klappt – Paperless-ngx ${r.version}`);
+    } catch (e) { toast(e.message, true); }
+  });
+  $("#pl-run").addEventListener("click", async () => {
+    const only = $("#pl-structure-only").checked;
+    if (!confirm(only ? "Ordnerstruktur jetzt nach Paperless-ngx übertragen?" : "Ordnerstruktur und Dokumente jetzt nach Paperless-ngx übertragen?")) return;
+    try {
+      await api("/paperless/migrate", { method: "POST", json: {
+        include_inbox: $("#pl-inbox").checked, include_documents: !$("#pl-structure-only").checked } });
+      $("#pl-run").disabled = true;
+      setTimeout(plPoll, 1000);
+    } catch (e) { toast(e.message, true); }
+  });
   $("#d-disconnect")?.addEventListener("click", async () => {
     if (!confirm("Verbindung zu Google Drive trennen?")) return;
     await api("/drive/disconnect", { method: "POST" });

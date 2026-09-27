@@ -7,7 +7,9 @@ Home-Assistant-Add-on zur Verwaltung privater Unterlagen:
 - **Verschlagwortung**: Schlagwörter, Dokumentart, Datum, Betrag, IBAN, Absender
 - **Ablagevorschlag** mit Sicherheit und Begründung. Abgelegt wird erst nach Bestätigung oder
   manueller Änderung, und die Vorschläge lernen aus jeder Entscheidung.
-- Volltextsuche, eigene Ordnerstruktur, Datenbank (SQLite) und Dateien auf dem eigenen Gerät
+- Volltextsuche, eigene Ordnerstruktur (auch aus einer Liste), Datenbank (SQLite) und Dateien auf dem eigenen Gerät
+- Verlustfreie Kompression, Backup über Home Assistant (z. B. Google Drive)
+- Übertragung nach **Paperless-ngx** (Speicherpfade, Tags, Dokumente)
 
 ## Installation in Home Assistant
 
